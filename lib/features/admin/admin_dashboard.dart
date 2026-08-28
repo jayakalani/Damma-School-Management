@@ -83,6 +83,12 @@ class AdminDashboard extends StatelessWidget {
                       Navigator.of(context)
                           .pushNamed(AppRoutes.examinationManagement),
                 ),
+                ListTile(
+                  leading: const Icon(Icons.backup_outlined),
+                  title: const Text('Backup & Restore'),
+                  subtitle: const Text('Protect and recover the database.'),
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.backupManagement),
+                ),
                 const _PlaceholderList(items: ['Audit Logs']),
               ],
             ),

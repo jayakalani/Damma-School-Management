@@ -6,15 +6,20 @@ import 'app/app.dart';
 import 'core/database/database_helper.dart';
 import 'core/services/auth_service.dart';
 
-Future<void> main() async {
+Future<void> main() => bootstrap();
+
+Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!kIsWeb) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
   final database = await DatabaseHelper().database;
-  runApp(DammaSchoolApp(
-    database: database,
-    auth: AuthService(database: database),
-  ));
+  runApp(
+    DammaSchoolApp(
+      database: database,
+      auth: AuthService(database: database),
+      onRestore: bootstrap,
+    ),
+  );
 }

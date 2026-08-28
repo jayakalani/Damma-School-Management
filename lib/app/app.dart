@@ -6,10 +6,16 @@ import 'routes/app_routes.dart';
 import 'theme/app_theme.dart';
 
 class DammaSchoolApp extends StatelessWidget {
-  const DammaSchoolApp({super.key, required this.database, required this.auth});
+  const DammaSchoolApp({
+    super.key,
+    required this.database,
+    required this.auth,
+    this.onRestore,
+  });
 
   final Database database;
   final AuthService auth;
+  final Future<void> Function()? onRestore;
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +27,7 @@ class DammaSchoolApp extends StatelessWidget {
         settings,
         database: database,
         auth: auth,
+        onRestore: onRestore,
       ),
     );
   }

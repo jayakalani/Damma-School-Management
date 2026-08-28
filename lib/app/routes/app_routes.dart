@@ -11,6 +11,7 @@ import '../../features/admin/batch_management_page.dart';
 import '../../features/admin/student_management_page.dart';
 import '../../features/admin/historical_past_pupil_page.dart';
 import '../../features/admin/examination_management_page.dart';
+import '../../features/admin/backup_management_page.dart';
 
 class AppRoutes {
   const AppRoutes._();
@@ -24,11 +25,13 @@ class AppRoutes {
   static const studentManagement = '/admin/students';
   static const historicalPastPupils = '/admin/past-pupils';
   static const examinationManagement = '/admin/examinations';
+  static const backupManagement = '/backup';
 
   static Route<dynamic> generate(
     RouteSettings settings, {
     required Database database,
     required AuthService auth,
+      Future<void> Function()? onRestore,
   }) {
     switch (settings.name) {
       case login:
@@ -90,6 +93,12 @@ class AppRoutes {
         return MaterialPageRoute(
           builder: (_) =>
               ExaminationManagementPage(database: database, auth: auth),
+        );
+      case backupManagement:
+        if (!auth.isAuthenticated)
+          return _redirect(settings, database, auth);
+        return MaterialPageRoute(
+          builder: (_) => BackupManagementPage(database: database, auth: auth, onRestore: onRestore),
         );
       default:
         return _redirect(settings, database, auth);
