@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../audit/audit_actions.dart';
 import '../audit/audit_log_repository.dart';
 import '../security/password_hasher.dart';
+import '../../models/database_models.dart';
 
 class UserRepository {
   UserRepository({
@@ -13,6 +14,29 @@ class UserRepository {
 
   final PasswordHasher _passwordHasher;
   final AuditLogRepository _auditLogs;
+
+  Future<User?> findByUsername({
+    required Database database,
+    required String username,
+  }) async {
+    final rows = await database.query(
+      'users',
+      where: 'username = ?',
+      whereArgs: [username.trim()],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : User.fromMap(rows.single);
+  }
+
+  Future<User?> findById({required Database database, required int id}) async {
+    final rows = await database.query(
+      'users',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : User.fromMap(rows.single);
+  }
 
   Future<List<Map<String, Object?>>> listStaff({
     required Database database,
