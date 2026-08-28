@@ -1,20 +1,62 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../app/routes/app_routes.dart';
 import '../../core/services/auth_service.dart';
 
 class AdminDashboard extends StatelessWidget {
-  const AdminDashboard({super.key, required this.auth});
+  const AdminDashboard({super.key, required this.auth, required this.database});
 
   final AuthService auth;
+  final Database database;
 
   @override
   Widget build(BuildContext context) {
     auth.requireRole('admin');
     final session = auth.currentSession!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Damma School Management System'), actions: [_LogoutButton(auth: auth)]),
-      body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: Padding(padding: const EdgeInsets.all(32), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Admin Dashboard', style: Theme.of(context).textTheme.headlineMedium), const SizedBox(height: 12), Text(session.fullName), const Text('Role: Administrator'), const SizedBox(height: 32), ListTile(leading: const Icon(Icons.people_outline), title: const Text('Staff Management'), subtitle: const Text('Manage staff accounts and access.'), onTap: () => Navigator.of(context).pushNamed(AppRoutes.staffManagement)), const _PlaceholderList(items: ['Audit Logs'])])))),
+      appBar: AppBar(
+        title: const Text('Damma School Management System'),
+        actions: [_LogoutButton(auth: auth)],
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Admin Dashboard',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 12),
+                Text(session.fullName),
+                const Text('Role: Administrator'),
+                const SizedBox(height: 32),
+                ListTile(
+                  leading: const Icon(Icons.people_outline),
+                  title: const Text('Staff Management'),
+                  subtitle: const Text('Manage staff accounts and access.'),
+                  onTap: () =>
+                      Navigator.of(context)
+                          .pushNamed(AppRoutes.staffManagement),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.school_outlined),
+                  title: const Text('Teachers'),
+                  subtitle: const Text('Manage teachers and qualifications.'),
+                  onTap: () =>
+                      Navigator.of(context)
+                          .pushNamed(AppRoutes.teacherManagement),
+                ),
+                const _PlaceholderList(items: ['Audit Logs']),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -24,7 +66,15 @@ class _LogoutButton extends StatelessWidget {
   final AuthService auth;
 
   @override
-  Widget build(BuildContext context) => IconButton(tooltip: 'Logout', icon: const Icon(Icons.logout), onPressed: () { auth.logout(); Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.login, (route) => false); });
+  Widget build(BuildContext context) => IconButton(
+    tooltip: 'Logout',
+    icon: const Icon(Icons.logout),
+    onPressed: () {
+      auth.logout();
+      Navigator.of(context)
+          .pushNamedAndRemoveUntil(AppRoutes.login, (route) => false);
+    },
+  );
 }
 
 class _PlaceholderList extends StatelessWidget {
@@ -32,5 +82,15 @@ class _PlaceholderList extends StatelessWidget {
   final List<String> items;
 
   @override
-  Widget build(BuildContext context) => Column(children: [for (final item in items) ListTile(enabled: false, leading: const Icon(Icons.arrow_forward_ios, size: 16), title: Text(item), subtitle: const Text('Coming in a later module'))]);
+  Widget build(BuildContext context) => Column(
+    children: [
+      for (final item in items)
+        ListTile(
+          enabled: false,
+          leading: const Icon(Icons.arrow_forward_ios, size: 16),
+          title: Text(item),
+          subtitle: const Text('Coming in a later module'),
+        ),
+    ],
+  );
 }

@@ -6,6 +6,7 @@ import '../../features/admin/admin_dashboard.dart';
 import '../../features/auth/login_page.dart';
 import '../../features/staff/staff_dashboard.dart';
 import '../../features/admin/staff_management_page.dart';
+import '../../features/admin/teacher_management_page.dart';
 
 class AppRoutes {
   const AppRoutes._();
@@ -14,6 +15,7 @@ class AppRoutes {
   static const admin = '/admin';
   static const staff = '/staff';
   static const staffManagement = '/admin/staff-management';
+  static const teacherManagement = '/admin/teachers';
 
   static Route<dynamic> generate(
     RouteSettings settings, {
@@ -27,22 +29,32 @@ class AppRoutes {
           builder: (_) => LoginPage(database: database, auth: auth),
         );
       case admin:
-        if (!auth.canAccess(role: 'admin')) return _redirect(settings, database, auth);
+        if (!auth.canAccess(role: 'admin'))
+          return _redirect(settings, database, auth);
         return MaterialPageRoute(
           settings: settings,
-          builder: (_) => AdminDashboard(auth: auth),
+          builder: (_) => AdminDashboard(auth: auth, database: database),
         );
       case staff:
-        if (!auth.canAccess(role: 'staff')) return _redirect(settings, database, auth);
+        if (!auth.canAccess(role: 'staff'))
+          return _redirect(settings, database, auth);
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => StaffDashboard(auth: auth),
         );
       case staffManagement:
-        if (!auth.canAccess(role: 'admin')) return _redirect(settings, database, auth);
+        if (!auth.canAccess(role: 'admin'))
+          return _redirect(settings, database, auth);
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => StaffManagementPage(database: database, auth: auth),
+        );
+      case teacherManagement:
+        if (!auth.canAccess(role: 'admin'))
+          return _redirect(settings, database, auth);
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) => TeacherManagementPage(database: database, auth: auth),
         );
       default:
         return _redirect(settings, database, auth);
@@ -59,7 +71,7 @@ class AppRoutes {
     return MaterialPageRoute(
       settings: settings,
       builder: (_) => destination == admin
-          ? AdminDashboard(auth: auth)
+          ? AdminDashboard(auth: auth, database: database)
           : LoginPage(database: database, auth: auth),
     );
   }

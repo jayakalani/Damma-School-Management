@@ -6,6 +6,7 @@ class AuditActions {
   static const staffStatusChanged = 'staff_status_changed';
   static const teacherCreated = 'teacher_created';
   static const teacherUpdated = 'teacher_updated';
+  static const teacherStatusChanged = 'teacher_status_changed';
   static const batchCreated = 'batch_created';
   static const batchUpdated = 'batch_updated';
   static const batchPromoted = 'batch_promoted';
