@@ -4,6 +4,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../core/batches/batch_repository.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/students/student_repository.dart';
+import '../../core/utils/app_validators.dart';
 
 class StudentManagementPage extends StatefulWidget {
   const StudentManagementPage({
@@ -149,54 +150,61 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: search,
-                  onChanged: (_) => refreshList(),
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                    labelText: 'Search students',
+          LayoutBuilder(
+            builder: (context, constraints) => Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                  width: constraints.maxWidth < 720
+                      ? constraints.maxWidth
+                      : 320,
+                  child: TextField(
+                    controller: search,
+                    onChanged: (_) => refreshList(),
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      labelText: 'Search students',
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              DropdownButton<String?>(
-                value: status,
-                hint: const Text('All statuses'),
-                items: const [
-                  DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('All statuses'),
-                  ),
-                  DropdownMenuItem(value: 'student', child: Text('Students')),
-                  DropdownMenuItem(
-                    value: 'past_pupil',
-                    child: Text('Past Pupils'),
-                  ),
-                ],
-                onChanged: (value) {
-                  status = value;
-                  refreshList();
-                },
-              ),
-              IconButton(
-                tooltip: 'Refresh',
-                onPressed: refreshList,
-                icon: const Icon(Icons.refresh),
-              ),
-              FilledButton.icon(
-                onPressed: bulkConvert,
-                icon: const Icon(Icons.groups_outlined),
-                label: const Text('Convert Batch'),
-              ),
-              FilledButton.icon(
-                onPressed: addStudent,
-                icon: const Icon(Icons.person_add),
-                label: const Text('Register Student'),
-              ),
-            ],
+                const SizedBox(width: 12),
+                DropdownButton<String?>(
+                  value: status,
+                  hint: const Text('All statuses'),
+                  items: const [
+                    DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('All statuses'),
+                    ),
+                    DropdownMenuItem(value: 'student', child: Text('Students')),
+                    DropdownMenuItem(
+                      value: 'past_pupil',
+                      child: Text('Past Pupils'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    status = value;
+                    refreshList();
+                  },
+                ),
+                IconButton(
+                  tooltip: 'Refresh',
+                  onPressed: refreshList,
+                  icon: const Icon(Icons.refresh),
+                ),
+                FilledButton.icon(
+                  onPressed: bulkConvert,
+                  icon: const Icon(Icons.groups_outlined),
+                  label: const Text('Convert Batch'),
+                ),
+                FilledButton.icon(
+                  onPressed: addStudent,
+                  icon: const Icon(Icons.person_add),
+                  label: const Text('Register Student'),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           Expanded(
@@ -339,8 +347,26 @@ Future<Map<String, Object?>?> showStudentEditor(
           onPressed: () {
             if (fields['full_name']!.text.trim().isEmpty ||
                 fields['name_with_initials']!.text.trim().isEmpty ||
-                fields['joined_date']!.text.trim().isEmpty)
+                fields['joined_date']!.text.trim().isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Full name, initials, and joined date are required.',
+                  ),
+                ),
+              );
               return;
+            }
+            final message =
+                AppValidators.nic(fields['nic']!.text) ??
+                AppValidators.phone(fields['phone_number']!.text) ??
+                AppValidators.optionalDate(fields['date_of_birth']!.text) ??
+                AppValidators.date(fields['joined_date']!.text, 'Joined date');
+            if (message != null) {
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(SnackBar(content: Text(message)));
+              return;
+            }
             Navigator.pop(context, {
               for (final entry in fields.entries)
                 entry.key: entry.value.text.trim(),

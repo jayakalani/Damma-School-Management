@@ -2,6 +2,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../audit/audit_actions.dart';
 import '../audit/audit_log_repository.dart';
+import '../utils/app_validators.dart';
 
 class PastPupilRepository {
   PastPupilRepository({AuditLogRepository? auditLogs})
@@ -72,6 +73,10 @@ class PastPupilRepository {
     required Map<String, Object?> details,
   }) async {
     if ((details['full_name']?.toString().trim() ?? '').isEmpty)
+      throw const InvalidPastPupilException();
+    if (AppValidators.nic(details['nic']) != null ||
+        AppValidators.phone(details['phone_number']) != null ||
+        AppValidators.optionalDate(details['date_of_birth']) != null)
       throw const InvalidPastPupilException();
     return database.transaction((transaction) async {
       await _requireAdmin(transaction, adminId);

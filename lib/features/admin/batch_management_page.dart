@@ -79,31 +79,38 @@ class _BatchManagementPageState extends State<BatchManagementPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: search,
-                  onChanged: (_) => refreshList(),
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                    labelText: 'Search batches',
+          LayoutBuilder(
+            builder: (context, constraints) => Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                  width: constraints.maxWidth < 720
+                      ? constraints.maxWidth
+                      : 320,
+                  child: TextField(
+                    controller: search,
+                    onChanged: (_) => refreshList(),
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      labelText: 'Search batches',
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              IconButton(
-                tooltip: 'Refresh',
-                onPressed: refreshList,
-                icon: const Icon(Icons.refresh),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: addBatch,
-                icon: const Icon(Icons.add),
-                label: const Text('Create Batch'),
-              ),
-            ],
+                const SizedBox(width: 12),
+                IconButton(
+                  tooltip: 'Refresh',
+                  onPressed: refreshList,
+                  icon: const Icon(Icons.refresh),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: addBatch,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Create Batch'),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           Expanded(

@@ -2,6 +2,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../audit/audit_actions.dart';
 import '../audit/audit_log_repository.dart';
+import '../utils/app_validators.dart';
 
 class ExaminationRepository {
   ExaminationRepository({AuditLogRepository? auditLogs})
@@ -68,7 +69,9 @@ class ExaminationRepository {
     required String date,
     required num totalMarks,
   }) async {
-    if (name.trim().isEmpty || date.trim().isEmpty || totalMarks < 0)
+    if (name.trim().isEmpty ||
+        AppValidators.date(date, 'Examination date') != null ||
+        totalMarks < 0)
       throw const InvalidExaminationException();
     return database.transaction((transaction) async {
       await _requireAdmin(transaction, adminId);

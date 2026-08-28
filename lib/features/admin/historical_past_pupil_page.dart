@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../core/past_pupils/past_pupil_repository.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/utils/app_validators.dart';
 
 class HistoricalPastPupilPage extends StatefulWidget {
   const HistoricalPastPupilPage({
@@ -238,10 +239,19 @@ Future<Map<String, Object?>?> showLegacyPupilEditor(
         FilledButton(
           onPressed: () {
             if (fields['full_name']!.text.trim().isNotEmpty)
+            {
+              final message = AppValidators.nic(fields['nic']!.text) ?? AppValidators.phone(fields['phone_number']!.text) ?? AppValidators.optionalDate(fields['date_of_birth']!.text);
+              if (message != null) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                return;
+              }
               Navigator.pop(context, {
                 for (final entry in fields.entries)
                   entry.key: entry.value.text.trim(),
               });
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Full name is required.')));
+            }
           },
           child: const Text('Save'),
         ),

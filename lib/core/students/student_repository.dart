@@ -2,6 +2,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../audit/audit_actions.dart';
 import '../audit/audit_log_repository.dart';
+import '../utils/app_validators.dart';
 
 class StudentRepository {
   StudentRepository({AuditLogRepository? auditLogs})
@@ -188,6 +189,11 @@ class StudentRepository {
     if ((details['full_name']?.toString().trim() ?? '').isEmpty ||
         (details['name_with_initials']?.toString().trim() ?? '').isEmpty ||
         (details['joined_date']?.toString().trim() ?? '').isEmpty)
+      throw const InvalidStudentException();
+    if (AppValidators.nic(details['nic']) != null ||
+        AppValidators.phone(details['phone_number']) != null ||
+        AppValidators.optionalDate(details['date_of_birth']) != null ||
+        AppValidators.date(details['joined_date'], 'Joined date') != null)
       throw const InvalidStudentException();
   }
 

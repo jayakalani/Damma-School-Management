@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../core/examinations/examination_repository.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/utils/app_validators.dart';
 
 class ExaminationManagementPage extends StatefulWidget {
   const ExaminationManagementPage({
@@ -419,9 +420,10 @@ Future<_ExamValues?> showExamEditor(
           FilledButton(
             onPressed: () {
               final value = num.tryParse(total.text);
+              final dateError = AppValidators.date(date.text, 'Examination date');
               if (historyId != null &&
                   name.text.trim().isNotEmpty &&
-                  date.text.trim().isNotEmpty &&
+                  dateError == null &&
                   value != null)
                 Navigator.pop(
                   context,
@@ -432,6 +434,8 @@ Future<_ExamValues?> showExamEditor(
                     totalMarks: value,
                   ),
                 );
+              else
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(dateError ?? 'Enter an examination name and valid total marks.')));
             },
             child: const Text('Create'),
           ),

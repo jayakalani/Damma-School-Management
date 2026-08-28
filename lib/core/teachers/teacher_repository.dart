@@ -2,6 +2,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../audit/audit_actions.dart';
 import '../audit/audit_log_repository.dart';
+import '../utils/app_validators.dart';
 
 class TeacherRepository {
   TeacherRepository({AuditLogRepository? auditLogs})
@@ -57,6 +58,7 @@ class TeacherRepository {
     required Map<String, Object?> details,
     required List<Map<String, Object?>> qualifications,
   }) async {
+    _validateDetails(details);
     return database.transaction((transaction) async {
       await _requireAdmin(transaction, adminId);
       final now = DateTime.now().toUtc().toIso8601String();
@@ -87,6 +89,7 @@ class TeacherRepository {
     required Map<String, Object?> details,
     required List<Map<String, Object?>> qualifications,
   }) async {
+    _validateDetails(details);
     await database.transaction((transaction) async {
       await _requireAdmin(transaction, adminId);
       await _requireTeacher(transaction, teacherId);
@@ -108,6 +111,21 @@ class TeacherRepository {
         description: 'Admin updated teacher ${details['full_name']}.',
       );
     });
+  }
+
+  void _validateDetails(Map<String, Object?> details) {
+    if (AppValidators.requiredText(details['full_name'], 'Full name') != null ||
+        AppValidators.requiredText(
+              details['name_with_initials'],
+              'Name with initials',
+            ) !=
+            null ||
+        AppValidators.date(details['registered_date'], 'Registered date') !=
+            null ||
+        AppValidators.nic(details['nic']) != null ||
+        AppValidators.phone(details['phone_number']) != null ||
+        AppValidators.optionalDate(details['date_of_birth']) != null)
+      throw StateError('Teacher details are invalid.');
   }
 
   Future<void> setTeacherStatus({

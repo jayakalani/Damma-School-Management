@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../core/services/auth_service.dart';
 import '../../core/teachers/teacher_repository.dart';
+import '../../core/utils/app_validators.dart';
 
 class TeacherManagementPage extends StatefulWidget {
   const TeacherManagementPage({
@@ -156,51 +157,58 @@ class _TeacherManagementPageState extends State<TeacherManagementPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: search,
-                    onChanged: (_) => refreshList(),
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      labelText: 'Search teachers',
+            LayoutBuilder(
+              builder: (context, constraints) => Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  SizedBox(
+                    width: constraints.maxWidth < 720
+                        ? constraints.maxWidth
+                        : 320,
+                    child: TextField(
+                      controller: search,
+                      onChanged: (_) => refreshList(),
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        labelText: 'Search teachers',
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                DropdownButton<String?>(
-                  value: statusFilter,
-                  hint: const Text('All statuses'),
-                  items: const [
-                    DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('All statuses'),
-                    ),
-                    DropdownMenuItem(value: 'active', child: Text('Active')),
-                    DropdownMenuItem(
-                      value: 'inactive',
-                      child: Text('Inactive'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    statusFilter = value;
-                    refreshList();
-                  },
-                ),
-                const SizedBox(width: 12),
-                IconButton(
-                  tooltip: 'Refresh',
-                  onPressed: refreshList,
-                  icon: const Icon(Icons.refresh),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: addTeacher,
-                  icon: const Icon(Icons.person_add),
-                  label: const Text('Add Teacher'),
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  DropdownButton<String?>(
+                    value: statusFilter,
+                    hint: const Text('All statuses'),
+                    items: const [
+                      DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('All statuses'),
+                      ),
+                      DropdownMenuItem(value: 'active', child: Text('Active')),
+                      DropdownMenuItem(
+                        value: 'inactive',
+                        child: Text('Inactive'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      statusFilter = value;
+                      refreshList();
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    tooltip: 'Refresh',
+                    onPressed: refreshList,
+                    icon: const Icon(Icons.refresh),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: addTeacher,
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Add Teacher'),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             Expanded(
@@ -396,8 +404,29 @@ Future<TeacherEditorValues?> showTeacherEditor(
             onPressed: () {
               if (fields['full_name']!.text.trim().isEmpty ||
                   fields['name_with_initials']!.text.trim().isEmpty ||
-                  fields['registered_date']!.text.trim().isEmpty)
+                  fields['registered_date']!.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Full name, initials, and registered date are required.',
+                    ),
+                  ),
+                );
                 return;
+              }
+              final message =
+                  AppValidators.nic(fields['nic']!.text) ??
+                  AppValidators.phone(fields['phone_number']!.text) ??
+                  AppValidators.optionalDate(fields['date_of_birth']!.text) ??
+                  AppValidators.date(
+                    fields['registered_date']!.text,
+                    'Registered date',
+                  );
+              if (message != null) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(message)));
+                return;
+              }
               Navigator.pop(
                 context,
                 TeacherEditorValues(
