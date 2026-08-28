@@ -59,6 +59,18 @@ class AdminDashboard extends StatelessWidget {
                       Navigator.of(context)
                           .pushNamed(AppRoutes.batchManagement),
                 ),
+                ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: const Text('Student Management'),
+                  subtitle: const Text('Register, edit, and convert students.'),
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.studentManagement),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.history_edu),
+                  title: const Text('Historical Past Pupils'),
+                  subtitle: const Text('Enter legacy alumni records.'),
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.historicalPastPupils),
+                ),
                 const _PlaceholderList(items: ['Audit Logs']),
               ],
             ),
