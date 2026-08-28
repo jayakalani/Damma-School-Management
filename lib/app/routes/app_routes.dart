@@ -5,6 +5,7 @@ import '../../core/services/auth_service.dart';
 import '../../features/admin/admin_dashboard.dart';
 import '../../features/auth/login_page.dart';
 import '../../features/staff/staff_dashboard.dart';
+import '../../features/admin/staff_management_page.dart';
 
 class AppRoutes {
   const AppRoutes._();
@@ -12,6 +13,7 @@ class AppRoutes {
   static const login = '/login';
   static const admin = '/admin';
   static const staff = '/staff';
+  static const staffManagement = '/admin/staff-management';
 
   static Route<dynamic> generate(
     RouteSettings settings, {
@@ -35,6 +37,12 @@ class AppRoutes {
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => StaffDashboard(auth: auth),
+        );
+      case staffManagement:
+        if (!auth.canAccess(role: 'admin')) return _redirect(settings, database, auth);
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) => StaffManagementPage(database: database, auth: auth),
         );
       default:
         return _redirect(settings, database, auth);

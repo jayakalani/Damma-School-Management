@@ -51,22 +51,53 @@ class UserRepository {
     );
   }
 
+  Future<List<Map<String, Object?>>> searchStaff({
+    required Database database,
+    required int adminId,
+    String query = '',
+    String? status,
+  }) async {
+    await _requireAdmin(database, adminId);
+    final conditions = <String>['role = ?'];
+    final arguments = <Object?>['staff'];
+    if (query.trim().isNotEmpty) {
+      conditions.add('(full_name LIKE ? OR username LIKE ?)');
+      final value = '%${query.trim()}%';
+      arguments.addAll([value, value]);
+    }
+    if (status != null) {
+      conditions.add('status = ?');
+      arguments.add(status);
+    }
+    return database.query(
+      'users',
+      where: conditions.join(' AND '),
+      whereArgs: arguments,
+      orderBy: 'full_name COLLATE NOCASE',
+    );
+  }
+
   Future<int> createStaff({
     required Database database,
     required int adminId,
     required String fullName,
     required String username,
     required String password,
+    String status = 'active',
   }) async {
+    if (status != 'active' && status != 'inactive') {
+      throw const InvalidStaffStatusException();
+    }
     return database.transaction((transaction) async {
       await _requireAdmin(transaction, adminId);
+      await _ensureUsernameAvailable(transaction, username);
       final now = DateTime.now().toUtc().toIso8601String();
       final staffId = await transaction.insert('users', {
         'full_name': fullName.trim(),
         'username': username.trim(),
         'password_hash': _passwordHasher.hash(password),
         'role': 'staff',
-        'status': 'active',
+        'status': status,
         'created_at': now,
         'updated_at': now,
       });
@@ -74,7 +105,7 @@ class UserRepository {
         database: transaction,
         userId: adminId,
         action: AuditActions.staffCreated,
-        module: 'users',
+        module: 'staff_management',
         entityType: 'user',
         entityId: staffId,
         description: 'Admin created staff member ${username.trim()}.',
@@ -93,6 +124,7 @@ class UserRepository {
     await database.transaction((transaction) async {
       await _requireAdmin(transaction, adminId);
       await _requireStaff(transaction, staffId);
+      await _ensureUsernameAvailable(transaction, username, excludingId: staffId);
       await transaction.update(
         'users',
         {
@@ -107,7 +139,7 @@ class UserRepository {
         database: transaction,
         userId: adminId,
         action: AuditActions.staffUpdated,
-        module: 'users',
+        module: 'staff_management',
         entityType: 'user',
         entityId: staffId,
         description: 'Admin updated staff member ${username.trim()}.',
@@ -137,7 +169,7 @@ class UserRepository {
         database: transaction,
         userId: adminId,
         action: AuditActions.staffStatusChanged,
-        module: 'users',
+        module: 'staff_management',
         entityType: 'user',
         entityId: staffId,
         description: 'Admin ${active ? 'activated' : 'deactivated'} staff member.',
@@ -167,7 +199,7 @@ class UserRepository {
         database: transaction,
         userId: adminId,
         action: 'staff_password_reset',
-        module: 'users',
+        module: 'staff_management',
         entityType: 'user',
         entityId: staffId,
         description: 'Admin reset a staff member password.',
@@ -200,4 +232,33 @@ class UserRepository {
       throw StateError('The target user is not a staff account.');
     }
   }
+
+  Future<void> _ensureUsernameAvailable(
+    DatabaseExecutor database,
+    String username, {
+    int? excludingId,
+  }) async {
+    final conditions = <String>['username = ?'];
+    final arguments = <Object?>[username.trim()];
+    if (excludingId != null) {
+      conditions.add('id != ?');
+      arguments.add(excludingId);
+    }
+    final matches = await database.query(
+      'users',
+      columns: ['id'],
+      where: conditions.join(' AND '),
+      whereArgs: arguments,
+      limit: 1,
+    );
+    if (matches.isNotEmpty) throw const UsernameAlreadyInUseException();
+  }
+}
+
+class UsernameAlreadyInUseException implements Exception {
+  const UsernameAlreadyInUseException();
+}
+
+class InvalidStaffStatusException implements Exception {
+  const InvalidStaffStatusException();
 }

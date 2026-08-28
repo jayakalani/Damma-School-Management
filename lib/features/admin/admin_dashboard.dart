@@ -14,7 +14,7 @@ class AdminDashboard extends StatelessWidget {
     final session = auth.currentSession!;
     return Scaffold(
       appBar: AppBar(title: const Text('Damma School Management System'), actions: [_LogoutButton(auth: auth)]),
-      body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: Padding(padding: const EdgeInsets.all(32), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Admin Dashboard', style: Theme.of(context).textTheme.headlineMedium), const SizedBox(height: 12), Text(session.fullName), const Text('Role: Administrator'), const SizedBox(height: 32), const _PlaceholderList(items: ['Dashboard', 'Staff Management', 'Audit Logs'])])))),
+      body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: Padding(padding: const EdgeInsets.all(32), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Admin Dashboard', style: Theme.of(context).textTheme.headlineMedium), const SizedBox(height: 12), Text(session.fullName), const Text('Role: Administrator'), const SizedBox(height: 32), ListTile(leading: const Icon(Icons.people_outline), title: const Text('Staff Management'), subtitle: const Text('Manage staff accounts and access.'), onTap: () => Navigator.of(context).pushNamed(AppRoutes.staffManagement)), const _PlaceholderList(items: ['Audit Logs'])])))),
     );
   }
 }
