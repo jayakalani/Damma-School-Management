@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../core/batches/batch_repository.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/teachers/teacher_repository.dart';
 
 class BatchManagementPage extends StatefulWidget {
   const BatchManagementPage({
@@ -178,6 +179,7 @@ class BatchDetailsPage extends StatefulWidget {
 
 class _BatchDetailsPageState extends State<BatchDetailsPage> {
   final repository = BatchRepository();
+  final teacherRepository = TeacherRepository();
   late Future<BatchDetails> details;
   int get adminId => widget.auth.currentSession!.userId;
   @override
@@ -221,6 +223,53 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
       reload();
     } catch (_) {
       _message('Unable to promote the batch.', error: true);
+    }
+  }
+
+  Future<void> assignTeacher(BatchDetails data) async {
+    final teachers = await teacherRepository.searchTeachers(
+      database: widget.database,
+      adminId: adminId,
+      status: 'active',
+    );
+    if (!mounted) return;
+    final teacherId = await showTeacherPicker(context, teachers);
+    if (teacherId == null || !mounted) return;
+    try {
+      await repository.assignClassTeacher(
+        database: widget.database,
+        adminId: adminId,
+        batchId: widget.batchId,
+        teacherId: teacherId,
+      );
+      _message('Class teacher assigned.');
+      reload();
+    } catch (_) {
+      _message('Unable to assign the class teacher.', error: true);
+    }
+  }
+
+  Future<void> addStudent() async {
+    final students = await repository.listStudents(
+      database: widget.database,
+      adminId: adminId,
+    );
+    if (!mounted) return;
+    final studentId = await showStudentPicker(context, students);
+    if (studentId == null || !mounted) return;
+    try {
+      await repository.addStudentToBatch(
+        database: widget.database,
+        adminId: adminId,
+        batchId: widget.batchId,
+        studentId: studentId,
+      );
+      _message('Student added to the batch.');
+      reload();
+    } on StudentAlreadyInBatchException {
+      _message('That student is already in this batch.', error: true);
+    } catch (_) {
+      _message('Unable to add the student.', error: true);
     }
   }
 
@@ -286,6 +335,17 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
             _Section(
               title: 'Students',
               children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: addStudent,
+                      icon: const Icon(Icons.person_add_outlined),
+                      label: const Text('Add Student'),
+                    ),
+                  ),
+                ),
                 if (data.students.isEmpty)
                   const ListTile(title: Text('No students assigned.'))
                 else
@@ -293,7 +353,7 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
                     ListTile(
                       title: Text(row['full_name']! as String),
                       subtitle: Text(
-                        row['is_current'] == 1 ? 'Current' : 'Historical',
+                        '${row['is_current'] == 1 ? 'Current' : 'Historical'} | Joined ${row['joined_date']}${row['left_date'] == null ? '' : ' | Left ${row['left_date']}'}',
                       ),
                     ),
               ],
@@ -301,6 +361,17 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
             _Section(
               title: 'Teachers',
               children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () => assignTeacher(data),
+                      icon: const Icon(Icons.person_add_alt_1_outlined),
+                      label: const Text('Assign Class Teacher'),
+                    ),
+                  ),
+                ),
                 if (data.teachers.isEmpty)
                   const ListTile(title: Text('No teachers assigned.'))
                 else
@@ -308,7 +379,7 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
                     ListTile(
                       title: Text(row['full_name']! as String),
                       subtitle: Text(
-                        row['is_current'] == 1 ? 'Current' : 'Historical',
+                        '${row['is_current'] == 1 ? 'Current' : 'Historical'} | Assigned ${row['assigned_date']}${row['removed_date'] == null ? '' : ' | Removed ${row['removed_date']}'}',
                       ),
                     ),
               ],
@@ -468,4 +539,70 @@ Future<_BatchValues?> showPromotionEditor(
   yearController.dispose();
   gradeController.dispose();
   return result;
+}
+
+Future<int?> showTeacherPicker(
+  BuildContext context,
+  List<Map<String, Object?>> teachers,
+) async {
+  return showDialog<int>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Assign Class Teacher'),
+      content: SizedBox(
+        width: 420,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final teacher in teachers)
+              ListTile(
+                leading: const Icon(Icons.person_outline),
+                title: Text(teacher['full_name']! as String),
+                subtitle: Text(teacher['name_with_initials']! as String),
+                onTap: () => Navigator.pop(context, teacher['id']! as int),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ],
+    ),
+  );
+}
+
+Future<int?> showStudentPicker(
+  BuildContext context,
+  List<Map<String, Object?>> students,
+) async {
+  return showDialog<int>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Add Student'),
+      content: SizedBox(
+        width: 420,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final student in students)
+              ListTile(
+                leading: const Icon(Icons.person_outline),
+                title: Text(student['full_name']! as String),
+                subtitle: Text(student['name_with_initials']! as String),
+                onTap: () => Navigator.pop(context, student['id']! as int),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ],
+    ),
+  );
 }

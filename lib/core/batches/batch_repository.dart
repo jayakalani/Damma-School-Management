@@ -87,6 +87,136 @@ class BatchRepository {
     );
   }
 
+  Future<List<Map<String, Object?>>> listStudents({
+    required Database database,
+    required int adminId,
+    String query = '',
+  }) async {
+    await _requireAdmin(database, adminId);
+    final value = query.trim();
+    return database.query(
+      'students',
+      where: value.isEmpty
+          ? null
+          : '(full_name LIKE ? OR name_with_initials LIKE ? OR nic LIKE ?)',
+      whereArgs: value.isEmpty ? null : ['%$value%', '%$value%', '%$value%'],
+      orderBy: 'full_name COLLATE NOCASE',
+    );
+  }
+
+  Future<void> assignClassTeacher({
+    required Database database,
+    required int adminId,
+    required int batchId,
+    required int teacherId,
+  }) async {
+    await database.transaction((transaction) async {
+      await _requireAdmin(transaction, adminId);
+      final history = await _currentHistory(transaction, batchId);
+      final teachers = await transaction.query(
+        'teachers',
+        columns: ['id'],
+        where: 'id = ? AND status = ?',
+        whereArgs: [teacherId, 'active'],
+        limit: 1,
+      );
+      if (teachers.isEmpty) throw StateError('An active teacher is required.');
+      final now = DateTime.now().toUtc().toIso8601String();
+      final current = await transaction.query(
+        'batch_teacher_history',
+        columns: ['id', 'teacher_id'],
+        where: 'batch_history_id = ? AND is_current = 1',
+        whereArgs: [history['id']],
+        limit: 1,
+      );
+      if (current.isNotEmpty && current.single['teacher_id'] == teacherId)
+        return;
+      if (current.isNotEmpty) {
+        await transaction.update(
+          'batch_teacher_history',
+          {'is_current': 0, 'removed_date': now, 'updated_at': now},
+          where: 'id = ?',
+          whereArgs: [current.single['id']],
+        );
+      }
+      await transaction.insert('batch_teacher_history', {
+        'batch_history_id': history['id'],
+        'teacher_id': teacherId,
+        'assigned_date': now,
+        'is_current': 1,
+        'created_at': now,
+        'updated_at': now,
+      });
+      await _auditLogs.record(
+        database: transaction,
+        userId: adminId,
+        action: AuditActions.batchTeacherChanged,
+        module: 'batch_management',
+        entityType: 'batch',
+        entityId: batchId,
+        description: 'Admin assigned class teacher to batch.',
+      );
+    });
+  }
+
+  Future<void> addStudentToBatch({
+    required Database database,
+    required int adminId,
+    required int batchId,
+    required int studentId,
+  }) async {
+    await database.transaction((transaction) async {
+      await _requireAdmin(transaction, adminId);
+      final history = await _currentHistory(transaction, batchId);
+      final students = await transaction.query(
+        'students',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [studentId],
+        limit: 1,
+      );
+      if (students.isEmpty) throw StateError('Student not found.');
+      final current = await transaction.query(
+        'student_batch_history',
+        columns: ['id', 'batch_id', 'batch_history_id'],
+        where: 'student_id = ? AND is_current = 1',
+        whereArgs: [studentId],
+        limit: 1,
+      );
+      if (current.isNotEmpty &&
+          current.single['batch_id'] == batchId &&
+          current.single['batch_history_id'] == history['id'])
+        throw const StudentAlreadyInBatchException();
+      final now = DateTime.now().toUtc().toIso8601String();
+      if (current.isNotEmpty) {
+        await transaction.update(
+          'student_batch_history',
+          {'is_current': 0, 'left_date': now, 'updated_at': now},
+          where: 'id = ?',
+          whereArgs: [current.single['id']],
+        );
+      }
+      await transaction.insert('student_batch_history', {
+        'student_id': studentId,
+        'batch_id': batchId,
+        'batch_history_id': history['id'],
+        'joined_date': now,
+        'is_current': 1,
+        'created_at': now,
+        'updated_at': now,
+      });
+      await _auditLogs.record(
+        database: transaction,
+        userId: adminId,
+        action: AuditActions.studentAdded,
+        module: 'batch_management',
+        entityType: 'student',
+        entityId: studentId,
+        description: 'Admin added student to batch.',
+      );
+    });
+  }
+
   Future<int> createBatch({
     required Database database,
     required int adminId,
@@ -193,6 +323,20 @@ class BatchRepository {
       throw const InvalidBatchException();
   }
 
+  Future<Map<String, Object?>> _currentHistory(
+    DatabaseExecutor database,
+    int batchId,
+  ) async {
+    final rows = await database.query(
+      'batch_history',
+      where: 'batch_id = ? AND is_current = 1',
+      whereArgs: [batchId],
+      limit: 1,
+    );
+    if (rows.isEmpty) throw StateError('Batch has no current history.');
+    return rows.single;
+  }
+
   Future<void> _requireAdmin(DatabaseExecutor database, int adminId) async {
     final rows = await database.query(
       'users',
@@ -223,4 +367,8 @@ class BatchDetails {
 
 class InvalidBatchException implements Exception {
   const InvalidBatchException();
+}
+
+class StudentAlreadyInBatchException implements Exception {
+  const StudentAlreadyInBatchException();
 }
