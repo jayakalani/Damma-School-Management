@@ -3,7 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 class DatabaseSchema {
   const DatabaseSchema._();
 
-  static const version = 1;
+  static const version = 2;
 
   static Future<void> onConfigure(Database database) async {
     await database.execute('PRAGMA foreign_keys = ON');
@@ -19,6 +19,35 @@ class DatabaseSchema {
 
   static Future<void> onUpgrade(Database database, int oldVersion, int newVersion) async {
     if (oldVersion < 1) await onCreate(database, newVersion);
+    if (oldVersion < 2) await ensureComplete(database);
+  }
+
+  static Future<void> ensureComplete(Database database) async {
+    final tableRows = await database.rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'");
+    final existingTables = tableRows.map((row) => row['name'] as String).toSet();
+    for (final sql in _createStatements) {
+      if (!sql.startsWith('CREATE TABLE')) continue;
+      final tableName = RegExp(r'CREATE TABLE (\w+)').firstMatch(sql)?.group(1);
+      if (tableName == null || existingTables.contains(tableName)) continue;
+      await database.execute(sql);
+      existingTables.add(tableName);
+    }
+
+    final indexRows = await database.rawQuery("SELECT name FROM sqlite_master WHERE type = 'index'");
+    final existingIndexes = indexRows.map((row) => row['name'] as String).toSet();
+    final triggerRows = await database.rawQuery("SELECT name FROM sqlite_master WHERE type = 'trigger'");
+    final existingTriggers = triggerRows.map((row) => row['name'] as String).toSet();
+    for (final sql in _createStatements) {
+      if (sql.startsWith('CREATE UNIQUE INDEX') || sql.startsWith('CREATE INDEX')) {
+        final indexName = RegExp(r'CREATE (?:UNIQUE )?INDEX (\w+)').firstMatch(sql)?.group(1);
+        if (indexName == null || existingIndexes.contains(indexName)) continue;
+        await database.execute(sql);
+      } else if (sql.startsWith('CREATE TRIGGER')) {
+        final triggerName = RegExp(r'CREATE TRIGGER (\w+)').firstMatch(sql)?.group(1);
+        if (triggerName == null || existingTriggers.contains(triggerName)) continue;
+        await database.execute(sql);
+      }
+    }
   }
 
   static const _createStatements = <String>[

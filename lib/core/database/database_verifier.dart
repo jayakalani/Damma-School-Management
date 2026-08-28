@@ -17,7 +17,10 @@ class DatabaseVerifier {
     if (foreignKeys.single.values.single != 1) throw StateError('SQLite foreign keys are disabled.');
     final rows = await database.rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'");
     final actual = rows.map((row) => row['name']).toSet();
-    if (!tables.every(actual.contains)) throw StateError('Database tables are incomplete.');
+    final missing = tables.where((table) => !actual.contains(table)).toList();
+    if (missing.isNotEmpty) {
+      throw StateError('Database tables are incomplete. Missing: ${missing.join(', ')}');
+    }
     final admins = await database.query('users', where: 'role = ?', whereArgs: ['admin']);
     if (admins.isEmpty) throw StateError('Default admin was not seeded.');
     assert(() {

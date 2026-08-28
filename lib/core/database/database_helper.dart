@@ -27,6 +27,7 @@ class DatabaseHelper {
       onCreate: DatabaseSchema.onCreate,
       onUpgrade: DatabaseSchema.onUpgrade,
     ));
+    await DatabaseSchema.ensureComplete(_database!);
     await DatabaseSeeder().seed(_database!);
     await DatabaseVerifier.verify(_database!);
     return _database!;
