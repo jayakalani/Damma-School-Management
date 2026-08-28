@@ -12,6 +12,7 @@ import '../../features/admin/student_management_page.dart';
 import '../../features/admin/historical_past_pupil_page.dart';
 import '../../features/admin/examination_management_page.dart';
 import '../../features/admin/backup_management_page.dart';
+import '../../features/admin/audit_logs_page.dart';
 
 class AppRoutes {
   const AppRoutes._();
@@ -26,12 +27,13 @@ class AppRoutes {
   static const historicalPastPupils = '/admin/past-pupils';
   static const examinationManagement = '/admin/examinations';
   static const backupManagement = '/backup';
+  static const auditLogs = '/admin/audit-logs';
 
   static Route<dynamic> generate(
     RouteSettings settings, {
     required Database database,
     required AuthService auth,
-      Future<void> Function()? onRestore,
+    Future<void> Function()? onRestore,
   }) {
     switch (settings.name) {
       case login:
@@ -95,10 +97,19 @@ class AppRoutes {
               ExaminationManagementPage(database: database, auth: auth),
         );
       case backupManagement:
-        if (!auth.isAuthenticated)
+        if (!auth.isAuthenticated) return _redirect(settings, database, auth);
+        return MaterialPageRoute(
+          builder: (_) => BackupManagementPage(
+            database: database,
+            auth: auth,
+            onRestore: onRestore,
+          ),
+        );
+      case auditLogs:
+        if (!auth.canAccess(role: 'admin'))
           return _redirect(settings, database, auth);
         return MaterialPageRoute(
-          builder: (_) => BackupManagementPage(database: database, auth: auth, onRestore: onRestore),
+          builder: (_) => AuditLogsPage(database: database, auth: auth),
         );
       default:
         return _redirect(settings, database, auth);
