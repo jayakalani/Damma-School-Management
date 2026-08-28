@@ -51,6 +51,14 @@ class AdminDashboard extends StatelessWidget {
                       Navigator.of(context)
                           .pushNamed(AppRoutes.teacherManagement),
                 ),
+                ListTile(
+                  leading: const Icon(Icons.groups_outlined),
+                  title: const Text('Batch Management'),
+                  subtitle: const Text('Create, view, and promote batches.'),
+                  onTap: () =>
+                      Navigator.of(context)
+                          .pushNamed(AppRoutes.batchManagement),
+                ),
                 const _PlaceholderList(items: ['Audit Logs']),
               ],
             ),
