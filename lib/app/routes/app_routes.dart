@@ -10,6 +10,7 @@ import '../../features/admin/teacher_management_page.dart';
 import '../../features/admin/batch_management_page.dart';
 import '../../features/admin/student_management_page.dart';
 import '../../features/admin/historical_past_pupil_page.dart';
+import '../../features/admin/examination_management_page.dart';
 
 class AppRoutes {
   const AppRoutes._();
@@ -22,6 +23,7 @@ class AppRoutes {
   static const batchManagement = '/admin/batches';
   static const studentManagement = '/admin/students';
   static const historicalPastPupils = '/admin/past-pupils';
+  static const examinationManagement = '/admin/examinations';
 
   static Route<dynamic> generate(
     RouteSettings settings, {
@@ -81,6 +83,13 @@ class AppRoutes {
         return MaterialPageRoute(
           builder: (_) =>
               HistoricalPastPupilPage(database: database, auth: auth),
+        );
+      case examinationManagement:
+        if (!auth.canAccess(role: 'admin'))
+          return _redirect(settings, database, auth);
+        return MaterialPageRoute(
+          builder: (_) =>
+              ExaminationManagementPage(database: database, auth: auth),
         );
       default:
         return _redirect(settings, database, auth);
