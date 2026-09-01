@@ -4,6 +4,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:damma_school_management_system/core/batches/batch_repository.dart';
 import 'package:damma_school_management_system/core/database/app_database.dart';
 import 'package:damma_school_management_system/core/examinations/examination_repository.dart';
+import 'package:damma_school_management_system/core/users/user_repository.dart';
 
 void main() {
   test(
@@ -105,4 +106,49 @@ void main() {
       await database.close();
     },
   );
+
+  test('allows active staff to list and create examinations', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(inMemoryDatabasePath);
+    final users = UserRepository();
+    final batches = BatchRepository();
+    final examinations = ExaminationRepository();
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final staffId = await users.createStaff(
+      database: connection,
+      adminId: adminId,
+      fullName: 'Staff User',
+      username: 'staff.exam',
+      password: 'StaffPassword123!',
+    );
+
+    await batches.createBatch(
+      database: connection,
+      adminId: adminId,
+      name: 'Staff Exam Batch',
+      startingYear: 2026,
+      startingGrade: 'Grade 1',
+    );
+    final historyId =
+        (await connection.query('batch_history')).single['id']! as int;
+
+    final examId = await examinations.createExamination(
+      database: connection,
+      adminId: staffId,
+      batchHistoryId: historyId,
+      name: 'Staff Term 1',
+      date: '2026-04-01',
+      totalMarks: 50,
+    );
+
+    final listed = await examinations.listExaminations(
+      database: connection,
+      adminId: staffId,
+    );
+    expect(listed.single['id'], examId);
+    expect(listed.single['examination_name'], 'Staff Term 1');
+
+    await database.close();
+  });
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../../app/widgets/date_picker_field.dart';
+
 import '../../core/past_pupils/past_pupil_repository.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/utils/app_validators.dart';
@@ -245,12 +247,19 @@ Future<Map<String, Object?>?> showLegacyPupilEditor(
           mainAxisSize: MainAxisSize.min,
           children: [
             for (final entry in fields.entries)
-              TextField(
-                controller: entry.value,
-                decoration: InputDecoration(
-                  labelText: _studentLabel(entry.key),
+              if (isStorageDateFieldKey(entry.key))
+                datePickerForKey(
+                  key: entry.key,
+                  controller: entry.value,
+                  label: _studentLabel(entry.key),
+                )
+              else
+                TextField(
+                  controller: entry.value,
+                  decoration: InputDecoration(
+                    labelText: _studentLabel(entry.key),
+                  ),
                 ),
-              ),
           ],
         ),
       ),

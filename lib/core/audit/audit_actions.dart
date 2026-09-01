@@ -4,6 +4,7 @@ class AuditActions {
   static const staffCreated = 'staff_created';
   static const staffUpdated = 'staff_updated';
   static const staffStatusChanged = 'staff_status_changed';
+  static const staffDeleted = 'staff_deleted';
   static const teacherCreated = 'teacher_created';
   static const teacherUpdated = 'teacher_updated';
   static const teacherStatusChanged = 'teacher_status_changed';
@@ -19,4 +20,6 @@ class AuditActions {
   static const examinationResultsUpdated = 'examination_results_updated';
   static const pastPupilBatchCreated = 'past_pupil_batch_created';
   static const backupCreated = 'backup_created';
+  static const profileUpdated = 'profile_updated';
+  static const passwordChanged = 'password_changed';
 }

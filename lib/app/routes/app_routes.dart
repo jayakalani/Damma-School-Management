@@ -55,7 +55,7 @@ class AppRoutes {
         }
         return MaterialPageRoute(
           settings: settings,
-          builder: (_) => StaffDashboard(auth: auth),
+          builder: (_) => StaffDashboard(auth: auth, database: database),
         );
       case staffManagement:
         if (!auth.canAccess(role: 'admin')) {

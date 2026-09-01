@@ -2,6 +2,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../audit/audit_actions.dart';
 import '../audit/audit_log_repository.dart';
+import '../auth/access_control.dart';
 import '../utils/app_validators.dart';
 
 class ExaminationRepository {
@@ -14,7 +15,11 @@ class ExaminationRepository {
     required Database database,
     required int adminId,
   }) async {
-    await _requireAdmin(database, adminId);
+    await AccessControl.requireActiveAdminOrStaff(
+      database,
+      adminId,
+      action: 'manage examinations',
+    );
     return database.rawQuery(
       'SELECT history.*, batches.batch_name FROM batch_history history INNER JOIN batches ON batches.id = history.batch_id ORDER BY history.academic_year DESC, batches.batch_name COLLATE NOCASE',
     );
@@ -24,7 +29,11 @@ class ExaminationRepository {
     required Database database,
     required int adminId,
   }) async {
-    await _requireAdmin(database, adminId);
+    await AccessControl.requireActiveAdminOrStaff(
+      database,
+      adminId,
+      action: 'manage examinations',
+    );
     return database.rawQuery(
       'SELECT examinations.*, history.batch_id, history.academic_year, history.grade, batches.batch_name FROM examinations INNER JOIN batch_history history ON history.id = examinations.batch_history_id INNER JOIN batches ON batches.id = history.batch_id ORDER BY examinations.examination_date DESC, examinations.id DESC',
     );
@@ -35,7 +44,11 @@ class ExaminationRepository {
     required int adminId,
     required int examinationId,
   }) async {
-    await _requireAdmin(database, adminId);
+    await AccessControl.requireActiveAdminOrStaff(
+      database,
+      adminId,
+      action: 'manage examinations',
+    );
     final exams = await database.rawQuery(
       'SELECT examinations.*, history.batch_id, history.academic_year, history.grade, batches.batch_name FROM examinations INNER JOIN batch_history history ON history.id = examinations.batch_history_id INNER JOIN batches ON batches.id = history.batch_id WHERE examinations.id = ?',
       [examinationId],
@@ -75,7 +88,11 @@ class ExaminationRepository {
       throw const InvalidExaminationException();
     }
     return database.transaction((transaction) async {
-      await _requireAdmin(transaction, adminId);
+      await AccessControl.requireActiveAdminOrStaff(
+        transaction,
+        adminId,
+        action: 'manage examinations',
+      );
       final histories = await transaction.query(
         'batch_history',
         columns: ['id'],
@@ -112,7 +129,11 @@ class ExaminationRepository {
     required List<ExamMarkInput> results,
   }) async {
     await database.transaction((transaction) async {
-      await _requireAdmin(transaction, adminId);
+      await AccessControl.requireActiveAdminOrStaff(
+        transaction,
+        adminId,
+        action: 'manage examinations',
+      );
       final exams = await transaction.query(
         'examinations',
         columns: ['id', 'batch_history_id', 'total_marks'],
@@ -230,18 +251,6 @@ class ExaminationRepository {
   }
 
   String _now() => DateTime.now().toUtc().toIso8601String();
-  Future<void> _requireAdmin(DatabaseExecutor database, int adminId) async {
-    final rows = await database.query(
-      'users',
-      columns: ['id'],
-      where: 'id = ? AND role = ? AND status = ?',
-      whereArgs: [adminId, 'admin', 'active'],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      throw StateError('Only an active admin can manage examinations.');
-    }
-  }
 }
 
 class ExaminationDetails {

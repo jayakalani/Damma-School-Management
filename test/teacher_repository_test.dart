@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:damma_school_management_system/core/database/app_database.dart';
 import 'package:damma_school_management_system/core/teachers/teacher_repository.dart';
+import 'package:damma_school_management_system/core/users/user_repository.dart';
 
 void main() {
   test(
@@ -106,4 +107,40 @@ void main() {
       await database.close();
     },
   );
+
+  test('allows active staff to manage teachers', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(inMemoryDatabasePath);
+    final users = UserRepository();
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final staffId = await users.createStaff(
+      database: connection,
+      adminId: adminId,
+      fullName: 'Staff User',
+      username: 'staff.teacher',
+      password: 'StaffPassword123!',
+    );
+    final repository = TeacherRepository();
+
+    final teacherId = await repository.createTeacher(
+      database: connection,
+      adminId: staffId,
+      details: {
+        'full_name': 'Staff Added Teacher',
+        'name_with_initials': 'S. Teacher',
+        'registered_date': '2026-01-01',
+        'status': 'active',
+      },
+      qualifications: const [],
+    );
+
+    final teachers = await repository.searchTeachers(
+      database: connection,
+      adminId: staffId,
+    );
+    expect(teachers.single['id'], teacherId);
+
+    await database.close();
+  });
 }

@@ -2,6 +2,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../audit/audit_actions.dart';
 import '../audit/audit_log_repository.dart';
+import '../auth/access_control.dart';
 import '../utils/app_validators.dart';
 
 class TeacherRepository {
@@ -16,7 +17,11 @@ class TeacherRepository {
     String query = '',
     String? status,
   }) async {
-    await _requireAdmin(database, adminId);
+    await AccessControl.requireActiveAdminOrStaff(
+      database,
+      adminId,
+      action: 'manage teachers',
+    );
     final conditions = <String>[];
     final arguments = <Object?>[];
     if (query.trim().isNotEmpty) {
@@ -43,7 +48,11 @@ class TeacherRepository {
     required int adminId,
     required int teacherId,
   }) async {
-    await _requireAdmin(database, adminId);
+    await AccessControl.requireActiveAdminOrStaff(
+      database,
+      adminId,
+      action: 'manage teachers',
+    );
     return database.query(
       'teacher_qualifications',
       where: 'teacher_id = ?',
@@ -60,10 +69,14 @@ class TeacherRepository {
   }) async {
     _validateDetails(details);
     return database.transaction((transaction) async {
-      await _requireAdmin(transaction, adminId);
+      await AccessControl.requireActiveAdminOrStaff(
+        transaction,
+        adminId,
+        action: 'manage teachers',
+      );
       final now = DateTime.now().toUtc().toIso8601String();
       final teacherId = await transaction.insert('teachers', {
-        ...details,
+        ..._cleanDetails(details),
         'status': details['status'] ?? 'active',
         'created_at': now,
         'updated_at': now,
@@ -91,12 +104,16 @@ class TeacherRepository {
   }) async {
     _validateDetails(details);
     await database.transaction((transaction) async {
-      await _requireAdmin(transaction, adminId);
+      await AccessControl.requireActiveAdminOrStaff(
+        transaction,
+        adminId,
+        action: 'manage teachers',
+      );
       await _requireTeacher(transaction, teacherId);
       final now = DateTime.now().toUtc().toIso8601String();
       await transaction.update(
         'teachers',
-        {...details, 'updated_at': now},
+        {..._cleanDetails(details), 'updated_at': now},
         where: 'id = ?',
         whereArgs: [teacherId],
       );
@@ -114,20 +131,24 @@ class TeacherRepository {
   }
 
   void _validateDetails(Map<String, Object?> details) {
-    if (AppValidators.requiredText(details['full_name'], 'Full name') != null ||
+    final message =
+        AppValidators.requiredText(details['full_name'], 'Full name') ??
         AppValidators.requiredText(
-              details['name_with_initials'],
-              'Name with initials',
-            ) !=
-            null ||
-        AppValidators.date(details['registered_date'], 'Registered date') !=
-            null ||
-        AppValidators.nic(details['nic']) != null ||
-        AppValidators.phone(details['phone_number']) != null ||
-        AppValidators.optionalDate(details['date_of_birth']) != null) {
-      throw StateError('Teacher details are invalid.');
+          details['name_with_initials'],
+          'Name with initials',
+        ) ??
+        AppValidators.date(details['registered_date'], 'Registered date') ??
+        AppValidators.nic(details['nic']) ??
+        AppValidators.phone(details['phone_number']) ??
+        AppValidators.optionalDate(details['date_of_birth']);
+    if (message != null) {
+      throw StateError(message);
     }
   }
+
+  Map<String, Object?> _cleanDetails(Map<String, Object?> details) => {
+    for (final entry in details.entries) entry.key: _clean(entry.value),
+  };
 
   Future<void> setTeacherStatus({
     required Database database,
@@ -136,7 +157,11 @@ class TeacherRepository {
     required bool active,
   }) async {
     await database.transaction((transaction) async {
-      await _requireAdmin(transaction, adminId);
+      await AccessControl.requireActiveAdminOrStaff(
+        transaction,
+        adminId,
+        action: 'manage teachers',
+      );
       await _requireTeacher(transaction, teacherId);
       await transaction.update(
         'teachers',
@@ -165,7 +190,11 @@ class TeacherRepository {
     required int teacherId,
   }) async {
     await database.transaction((transaction) async {
-      await _requireAdmin(transaction, adminId);
+      await AccessControl.requireActiveAdminOrStaff(
+        transaction,
+        adminId,
+        action: 'manage teachers',
+      );
       await _requireTeacher(transaction, teacherId);
       final assignments = await transaction.query(
         'batch_teacher_history',
@@ -217,19 +246,6 @@ class TeacherRepository {
   String? _clean(Object? value) {
     final text = value?.toString().trim() ?? '';
     return text.isEmpty ? null : text;
-  }
-
-  Future<void> _requireAdmin(DatabaseExecutor database, int adminId) async {
-    final rows = await database.query(
-      'users',
-      columns: ['id'],
-      where: 'id = ? AND role = ? AND status = ?',
-      whereArgs: [adminId, 'admin', 'active'],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      throw StateError('Only an active admin can manage teachers.');
-    }
   }
 
   Future<void> _requireTeacher(DatabaseExecutor database, int teacherId) async {

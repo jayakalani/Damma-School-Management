@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../app/widgets/date_picker_field.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../core/batches/batch_repository.dart';
@@ -315,7 +317,6 @@ Future<Map<String, Object?>?> showStudentEditor(
     'full_name',
     'name_with_initials',
     'date_of_birth',
-    'nic',
     'phone_number',
     'address',
     'joined_date',
@@ -325,7 +326,7 @@ Future<Map<String, Object?>?> showStudentEditor(
       key: TextEditingController(text: student?[key] as String?),
   };
   fields['joined_date']!.text = fields['joined_date']!.text.isEmpty
-      ? DateTime.now().toIso8601String().split('T').first
+      ? AppDateFormats.storage(DateTime.now())
       : fields['joined_date']!.text;
   final result = await showDialog<Map<String, Object?>>(
     context: context,
@@ -336,12 +337,19 @@ Future<Map<String, Object?>?> showStudentEditor(
           mainAxisSize: MainAxisSize.min,
           children: [
             for (final entry in fields.entries)
-              TextField(
-                controller: entry.value,
-                decoration: InputDecoration(
-                  labelText: _studentLabel(entry.key),
+              if (isStorageDateFieldKey(entry.key))
+                datePickerForKey(
+                  key: entry.key,
+                  controller: entry.value,
+                  label: _studentLabel(entry.key),
+                )
+              else
+                TextField(
+                  controller: entry.value,
+                  decoration: InputDecoration(
+                    labelText: _studentLabel(entry.key),
+                  ),
                 ),
-              ),
           ],
         ),
       ),
@@ -365,7 +373,6 @@ Future<Map<String, Object?>?> showStudentEditor(
               return;
             }
             final message =
-                AppValidators.nic(fields['nic']!.text) ??
                 AppValidators.phone(fields['phone_number']!.text) ??
                 AppValidators.optionalDate(fields['date_of_birth']!.text) ??
                 AppValidators.date(fields['joined_date']!.text, 'Joined date');
@@ -377,6 +384,7 @@ Future<Map<String, Object?>?> showStudentEditor(
             Navigator.pop(context, {
               for (final entry in fields.entries)
                 entry.key: entry.value.text.trim(),
+              'nic': null,
             });
           },
           child: const Text('Save'),

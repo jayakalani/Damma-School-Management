@@ -59,6 +59,26 @@ class AuthService {
 
   void logout() => _session = null;
 
+  Future<void> refreshSessionFromDatabase() async {
+    final session = _session;
+    if (session == null) return;
+    final user = await _users.findById(database: _database, id: session.userId);
+    if (user != null && user.status == 'active') {
+      _session = AuthSession.fromUser(user);
+    }
+  }
+
+  void updateSessionFullName(String fullName) {
+    final session = _session;
+    if (session == null) return;
+    _session = AuthSession(
+      userId: session.userId,
+      fullName: fullName,
+      username: session.username,
+      role: session.role,
+    );
+  }
+
   bool canAccess({required String role}) => _session?.role == role;
 
   void requireRole(String role) {

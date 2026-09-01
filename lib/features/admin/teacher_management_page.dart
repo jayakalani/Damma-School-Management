@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+
+import '../../app/widgets/date_picker_field.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../core/services/auth_service.dart';
 import '../../core/teachers/teacher_repository.dart';
 import '../../core/utils/app_validators.dart';
+import '../../core/utils/error_messages.dart';
 
 class TeacherManagementPage extends StatefulWidget {
   const TeacherManagementPage({
@@ -53,16 +56,19 @@ class _TeacherManagementPageState extends State<TeacherManagementPage> {
   Future<void> addTeacher() async {
     final values = await showTeacherEditor(context);
     if (values == null || !mounted) return;
-    await _perform(() async {
-      await repository.createTeacher(
-        database: widget.database,
-        adminId: adminId,
-        details: values.details,
-        qualifications: values.qualifications,
-      );
-      _message('Teacher added.');
-      refreshList();
-    });
+    await _perform(
+      operation: () async {
+        await repository.createTeacher(
+          database: widget.database,
+          adminId: adminId,
+          details: values.details,
+          qualifications: values.qualifications,
+        );
+        _message('Teacher added.');
+        refreshList();
+      },
+      failureMessage: 'Unable to add teacher.',
+    );
   }
 
   Future<void> editTeacher(Map<String, Object?> teacher) async {
@@ -78,17 +84,20 @@ class _TeacherManagementPageState extends State<TeacherManagementPage> {
       qualifications: qualificationRows,
     );
     if (values == null || !mounted) return;
-    await _perform(() async {
-      await repository.updateTeacher(
-        database: widget.database,
-        adminId: adminId,
-        teacherId: teacher['id']! as int,
-        details: values.details,
-        qualifications: values.qualifications,
-      );
-      _message('Teacher updated.');
-      refreshList();
-    });
+    await _perform(
+      operation: () async {
+        await repository.updateTeacher(
+          database: widget.database,
+          adminId: adminId,
+          teacherId: teacher['id']! as int,
+          details: values.details,
+          qualifications: values.qualifications,
+        );
+        _message('Teacher updated.');
+        refreshList();
+      },
+      failureMessage: 'Unable to update teacher.',
+    );
   }
 
   Future<void> toggleStatus(Map<String, Object?> teacher) async {
@@ -111,23 +120,32 @@ class _TeacherManagementPageState extends State<TeacherManagementPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await _perform(() async {
-      await repository.setTeacherStatus(
-        database: widget.database,
-        adminId: adminId,
-        teacherId: teacher['id']! as int,
-        active: !active,
-      );
-      _message(active ? 'Teacher deactivated.' : 'Teacher activated.');
-      refreshList();
-    });
+    await _perform(
+      operation: () async {
+        await repository.setTeacherStatus(
+          database: widget.database,
+          adminId: adminId,
+          teacherId: teacher['id']! as int,
+          active: !active,
+        );
+        _message(active ? 'Teacher deactivated.' : 'Teacher activated.');
+        refreshList();
+      },
+      failureMessage: 'Unable to change teacher status.',
+    );
   }
 
-  Future<void> _perform(Future<void> Function() operation) async {
+  Future<void> _perform({
+    required Future<void> Function() operation,
+    required String failureMessage,
+  }) async {
     try {
       await operation();
-    } catch (_) {
-      _message('Unable to complete the teacher operation.', error: true);
+    } catch (error) {
+      _message(
+        userFacingError(error, fallback: failureMessage),
+        error: true,
+      );
     }
   }
 
@@ -217,8 +235,17 @@ class _TeacherManagementPageState extends State<TeacherManagementPage> {
                 future: teachers,
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
-                    return const Center(
-                      child: Text('Unable to load teachers.'),
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          userFacingError(
+                            snapshot.error!,
+                            fallback: 'Unable to load teachers.',
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
                     );
                   }
                   if (!snapshot.hasData) {
@@ -336,7 +363,7 @@ Future<TeacherEditorValues?> showTeacherEditor(
       key: TextEditingController(text: teacher?[key] as String?),
   };
   fields['registered_date']!.text = fields['registered_date']!.text.isEmpty
-      ? DateTime.now().toIso8601String().split('T').first
+      ? AppDateFormats.storage(DateTime.now())
       : fields['registered_date']!.text;
   var status = teacher?['status'] as String? ?? 'active';
   final drafts = qualifications.map(_QualificationDraft.new).toList();
@@ -353,10 +380,17 @@ Future<TeacherEditorValues?> showTeacherEditor(
               mainAxisSize: MainAxisSize.min,
               children: [
                 for (final entry in fields.entries)
-                  TextField(
-                    controller: entry.value,
-                    decoration: InputDecoration(labelText: _label(entry.key)),
-                  ),
+                  if (isStorageDateFieldKey(entry.key))
+                    datePickerForKey(
+                      key: entry.key,
+                      controller: entry.value,
+                      label: _label(entry.key),
+                    )
+                  else
+                    TextField(
+                      controller: entry.value,
+                      decoration: InputDecoration(labelText: _label(entry.key)),
+                    ),
                 DropdownButtonFormField<String>(
                   initialValue: status,
                   decoration: const InputDecoration(labelText: 'Status'),

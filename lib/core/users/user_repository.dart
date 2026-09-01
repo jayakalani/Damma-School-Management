@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../audit/audit_actions.dart';
 import '../audit/audit_log_repository.dart';
 import '../security/password_hasher.dart';
+import '../utils/validators.dart';
 import '../../models/database_models.dart';
 
 class UserRepository {
@@ -177,6 +178,50 @@ class UserRepository {
     });
   }
 
+  Future<void> deleteStaff({
+    required Database database,
+    required int adminId,
+    required int staffId,
+  }) async {
+    await database.transaction((transaction) async {
+      await _requireAdmin(transaction, adminId);
+      if (staffId == adminId) {
+        throw StateError('You cannot delete your own account.');
+      }
+      final rows = await transaction.query(
+        'users',
+        columns: ['username'],
+        where: 'id = ? AND role = ?',
+        whereArgs: [staffId, 'staff'],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        throw StateError('The target user is not a staff account.');
+      }
+      final username = rows.single['username']! as String;
+      await transaction.update(
+        'audit_logs',
+        {'user_id': adminId},
+        where: 'user_id = ?',
+        whereArgs: [staffId],
+      );
+      await transaction.delete(
+        'users',
+        where: 'id = ?',
+        whereArgs: [staffId],
+      );
+      await _auditLogs.record(
+        database: transaction,
+        userId: adminId,
+        action: AuditActions.staffDeleted,
+        module: 'staff_management',
+        entityType: 'user',
+        entityId: staffId,
+        description: 'Admin permanently deleted staff member $username.',
+      );
+    });
+  }
+
   Future<void> resetStaffPassword({
     required Database database,
     required int adminId,
@@ -205,6 +250,110 @@ class UserRepository {
         description: 'Admin reset a staff member password.',
       );
     });
+  }
+
+  Future<void> updateUserProfile({
+    required Database database,
+    required int userId,
+    required String fullName,
+    required String username,
+  }) async {
+    final trimmedName = fullName.trim();
+    final trimmedUsername = username.trim();
+    if (trimmedName.isEmpty) {
+      throw const InvalidProfileDataException('Full name is required.');
+    }
+    if (trimmedName.length < 2 || trimmedName.length > 150) {
+      throw const InvalidProfileDataException(
+        'Full name must be between 2 and 150 characters.',
+      );
+    }
+    final usernameError = InputValidator.username(trimmedUsername);
+    if (usernameError != null) {
+      throw InvalidProfileDataException(usernameError);
+    }
+
+    await database.transaction((transaction) async {
+      final user = await _requireActiveUser(transaction, userId);
+      await _ensureUsernameAvailable(
+        transaction,
+        trimmedUsername,
+        excludingId: userId,
+      );
+      await transaction.update(
+        'users',
+        {
+          'full_name': trimmedName,
+          'username': trimmedUsername,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [userId],
+      );
+      final usernameChanged = user.username != trimmedUsername;
+      await _auditLogs.record(
+        database: transaction,
+        userId: userId,
+        action: AuditActions.profileUpdated,
+        module: 'user_profile',
+        entityType: 'user',
+        entityId: userId,
+        description: usernameChanged
+            ? '${user.username} updated their profile (name and username).'
+            : '${user.username} updated their profile name.',
+      );
+    });
+  }
+
+  Future<void> updateUserPassword({
+    required Database database,
+    required int userId,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await database.transaction((transaction) async {
+      final user = await _requireActiveUser(transaction, userId);
+      if (!_passwordHasher.verify(currentPassword, user.passwordHash)) {
+        throw const InvalidCurrentPasswordException();
+      }
+      if (currentPassword == newPassword) {
+        throw const InvalidProfileDataException(
+          'New password must be different from the current password.',
+        );
+      }
+
+      await transaction.update(
+        'users',
+        {
+          'password_hash': _passwordHasher.hash(newPassword),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [userId],
+      );
+      await _auditLogs.record(
+        database: transaction,
+        userId: userId,
+        action: AuditActions.passwordChanged,
+        module: 'user_profile',
+        entityType: 'user',
+        entityId: userId,
+        description: '${user.username} changed their account password.',
+      );
+    });
+  }
+
+  Future<User> _requireActiveUser(DatabaseExecutor database, int userId) async {
+    final rows = await database.query(
+      'users',
+      where: 'id = ? AND status = ?',
+      whereArgs: [userId, 'active'],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError('Only an active user can update their profile.');
+    }
+    return User.fromMap(rows.single);
   }
 
   Future<void> _requireAdmin(DatabaseExecutor database, int adminId) async {
@@ -261,4 +410,13 @@ class UsernameAlreadyInUseException implements Exception {
 
 class InvalidStaffStatusException implements Exception {
   const InvalidStaffStatusException();
+}
+
+class InvalidProfileDataException implements Exception {
+  const InvalidProfileDataException(this.message);
+  final String message;
+}
+
+class InvalidCurrentPasswordException implements Exception {
+  const InvalidCurrentPasswordException();
 }

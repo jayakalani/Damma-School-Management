@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../app/routes/app_routes.dart';
+import '../../app/widgets/glass_ui.dart';
 import '../../core/services/auth_service.dart';
+import '../profile/user_profile_menu.dart';
 
 class StaffDashboard extends StatefulWidget {
-  const StaffDashboard({super.key, required this.auth});
+  const StaffDashboard({super.key, required this.auth, required this.database});
 
   final AuthService auth;
+  final Database database;
 
   @override
   State<StaffDashboard> createState() => _StaffDashboardState();
@@ -16,6 +20,16 @@ class _StaffDashboardState extends State<StaffDashboard> {
   int _selectedIndex = 0;
   bool _isSidebarVisible = true;
 
+  static const _navItems = [
+    ('Dashboard', Icons.dashboard_rounded, AppRoutes.staff),
+    ('Teachers', Icons.person_rounded, AppRoutes.teacherManagement),
+    ('Batches', Icons.groups_rounded, AppRoutes.batchManagement),
+    ('Students', Icons.school_rounded, AppRoutes.studentManagement),
+    ('Past Pupils', Icons.history_edu_rounded, AppRoutes.historicalPastPupils),
+    ('Exams', Icons.assignment_rounded, AppRoutes.examinationManagement),
+    ('Backup', Icons.backup_rounded, AppRoutes.backupManagement),
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -24,6 +38,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
 
   void _navigate(int index, String route) {
     setState(() => _selectedIndex = index);
+    if (route == AppRoutes.staff) return;
     Navigator.of(context).pushNamed(route);
   }
 
@@ -36,267 +51,152 @@ class _StaffDashboardState extends State<StaffDashboard> {
   @override
   Widget build(BuildContext context) {
     final session = widget.auth.currentSession!;
-    final isMobile = MediaQuery.of(context).size.width < 900;
+    final isMobile = MediaQuery.sizeOf(context).width < 900;
 
     return Scaffold(
-      body: Row(
-        children: [
-          // Sidebar Navigation
-          if (!isMobile && _isSidebarVisible) _buildSidebar(context),
-          // Main Content
-          Expanded(
-            child: Column(
-              children: [
-                // Header Bar
-                _buildHeaderBar(context, session),
-                // Main Dashboard Content
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
+      backgroundColor: const Color(0xFFEEF4F7),
+      body: DashboardBackdrop(
+        child: Row(
+          children: [
+            if (!isMobile && _isSidebarVisible)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 0, 16),
+                child: _buildSidebar(context),
+              ),
+            Expanded(
+              child: Column(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(isMobile ? 12 : 16, 16, isMobile ? 12 : 24, 8),
+                    child: _buildHeaderBar(context, session),
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 24, 0, isMobile ? 16 : 24, 24),
                       child: _buildDashboardContent(context),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildSidebar(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final navItems = [
-      ('Dashboard', Icons.dashboard_outlined, 0),
-      ('Teachers', Icons.person_outlined, 1),
-      ('Batches', Icons.groups_outlined, 2),
-      ('Students', Icons.school_outlined, 3),
-      ('Past Pupils', Icons.history_edu_outlined, 4),
-      ('Exams', Icons.assignment_outlined, 5),
-      ('Backup', Icons.backup_outlined, 6),
-    ];
 
-    final navRoutes = [
-      AppRoutes.staff,
-      AppRoutes.teacherManagement,
-      AppRoutes.batchManagement,
-      AppRoutes.studentManagement,
-      AppRoutes.historicalPastPupils,
-      AppRoutes.examinationManagement,
-      AppRoutes.backupManagement,
-    ];
-
-    return Container(
+    return SizedBox(
       width: 260,
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainer,
-        border: Border(
-          right: BorderSide(
-            color: colorScheme.outlineVariant,
-            width: 1,
-          ),
-        ),
-      ),
-      child: Column(
-        children: [
-          // Logo/Branding
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.school,
-                    color: colorScheme.onPrimary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Damma',
-                        style: Theme.of(context).textTheme.titleSmall,
+      child: GlassSurface(
+        borderRadius: BorderRadius.circular(22),
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        opacity: 0.74,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      gradient: LinearGradient(
+                        colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.75)],
                       ),
-                      Text(
-                        'School Mgmt',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                      ),
-                    ],
+                      boxShadow: floatingShadow(color: colorScheme.primary, blur: 14, y: 6, opacity: 0.16),
+                    ),
+                    child: Icon(Icons.school_rounded, color: colorScheme.onPrimary),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          // Navigation Items
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: navItems.length,
-              itemBuilder: (context, index) {
-                final (label, icon, _) = navItems[index];
-                final isSelected = _selectedIndex == index;
-
-                return Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: NavigationTile(
-                    label: label,
-                    icon: icon,
-                    isSelected: isSelected,
-                    onTap: () => _navigate(index, navRoutes[index]),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Damma School', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                        Text(
+                          'Staff Portal',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
-                );
-              },
-            ),
-          ),
-          const Divider(height: 1),
-          // Logout Button
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _logout,
-                icon: const Icon(Icons.logout, size: 18),
-                label: const Text('Logout'),
+                ],
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 18),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                itemCount: _navItems.length,
+                itemBuilder: (context, index) {
+                  final (label, icon, route) = _navItems[index];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: GlassNavTile(
+                      label: label,
+                      icon: icon,
+                      isSelected: _selectedIndex == index,
+                      onTap: () => _navigate(index, route),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+              child: GlassLogoutButton(onPressed: _logout),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildHeaderBar(BuildContext context, dynamic session) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      height: 72,
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outlineVariant,
-            width: 1,
-          ),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+  Widget _buildHeaderBar(BuildContext context, AuthSession session) {
+    return GlassSurface(
+      borderRadius: BorderRadius.circular(20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      opacity: 0.76,
       child: Row(
         children: [
           IconButton(
-            onPressed: () {
-              setState(() {
-                _isSidebarVisible = !_isSidebarVisible;
-              });
-            },
+            onPressed: () => setState(() => _isSidebarVisible = !_isSidebarVisible),
             tooltip: _isSidebarVisible ? 'Hide sidebar' : 'Show sidebar',
-            icon: const Icon(Icons.menu),
+            icon: const Icon(Icons.menu_rounded),
           ),
-          const SizedBox(width: 8),
-          // Screen Title
-          Text(
-            'Staff Dashboard',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const Spacer(),
-          // Status Indicator
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.amber.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.amber.withValues(alpha: 0.3),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.cloud_off_outlined,
-                  size: 16,
-                  color: Colors.amber.shade800,
-                ),
-                const SizedBox(width: 8),
                 Text(
-                  'Offline',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Colors.amber.shade800,
+                  'Staff Dashboard',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  'Manage school records in your offline workspace.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 24),
-          // User Profile Badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: colorScheme.primary,
-                  child: Text(
-                    session.fullName[0].toUpperCase(),
-                    style: TextStyle(
-                      color: colorScheme.onPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      session.fullName,
-                      style: Theme.of(context).textTheme.labelMedium,
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primary.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        'Staff',
-                        style:
-                            Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: colorScheme.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          const GlassStatusChip(),
+          const SizedBox(width: 16),
+          UserProfileMenu(
+            session: session,
+            auth: widget.auth,
+            database: widget.database,
+            roleLabel: 'Staff',
+            onLogout: _logout,
+            onProfileUpdated: () => setState(() {}),
           ),
         ],
       ),
@@ -304,327 +204,82 @@ class _StaffDashboardState extends State<StaffDashboard> {
   }
 
   Widget _buildDashboardContent(BuildContext context) {
+    final metrics = [
+      ('Active Teachers', '12', Icons.person_rounded, const Color(0xFF3B82F6)),
+      ('Active Batches', '8', Icons.groups_rounded, const Color(0xFF22C55E)),
+      ('Enrolled Students', '245', Icons.school_rounded, const Color(0xFFF97316)),
+      ('Past Pupils', '1,842', Icons.history_edu_rounded, const Color(0xFF8B5CF6)),
+    ];
+
+    final actions = [
+      ('Teachers', Icons.person_rounded, 'Manage teacher records', AppRoutes.teacherManagement),
+      ('Batch Management', Icons.groups_rounded, 'Create and manage batches', AppRoutes.batchManagement),
+      ('Students', Icons.school_rounded, 'Manage student records', AppRoutes.studentManagement),
+      ('Examinations', Icons.assignment_rounded, 'Manage exams and marks', AppRoutes.examinationManagement),
+      ('Past Pupils', Icons.history_edu_rounded, 'Review alumni records', AppRoutes.historicalPastPupils),
+      ('Database Backup', Icons.backup_rounded, 'Backup application data', AppRoutes.backupManagement),
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Metric Summary Cards
-        _buildMetricCards(context),
-        const SizedBox(height: 32),
-        // Quick Actions Section
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 1100 ? 4 : constraints.maxWidth >= 700 ? 2 : 1;
+            return GridView.count(
+              crossAxisCount: columns,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: columns == 1 ? 3.6 : 2.8,
+              children: metrics
+                  .map(
+                    (m) => GlassMetricCard(
+                      label: m.$1,
+                      value: m.$2,
+                      icon: m.$3,
+                      color: m.$4,
+                    ),
+                  )
+                  .toList(),
+            );
+          },
+        ),
+        const SizedBox(height: 20),
+        Text('Quick Actions', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
         Text(
-          'Quick Actions',
-          style: Theme.of(context).textTheme.titleLarge,
+          'Jump directly into the modules you use most.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
         ),
         const SizedBox(height: 16),
-        _buildQuickActionsGrid(context),
-      ],
-    );
-  }
-
-  Widget _buildMetricCards(BuildContext context) {
-    final metrics = [
-      ('Active Teachers', '12', Icons.person, Colors.blue),
-      ('Active Batches', '8', Icons.groups, Colors.green),
-      ('Enrolled Students', '245', Icons.school, Colors.orange),
-      ('Past Pupils', '1,842', Icons.history_edu, Colors.purple),
-    ];
-
-    return Wrap(
-      spacing: 16,
-      runSpacing: 16,
-      children: metrics
-          .map(
-            (metric) => Flexible(
-              child: MetricCard(
-                label: metric.$1,
-                value: metric.$2,
-                icon: metric.$3,
-                color: metric.$4,
-              ),
-            ),
-          )
-          .toList(),
-    );
-  }
-
-  Widget _buildQuickActionsGrid(BuildContext context) {
-    final actions = [
-      ('Teachers', Icons.person_outlined, 'Manage teacher records',
-          AppRoutes.teacherManagement),
-      ('Batch Management', Icons.groups_outlined, 'Create and manage batches',
-          AppRoutes.batchManagement),
-      ('Students', Icons.school_outlined, 'Manage student records',
-          AppRoutes.studentManagement),
-      ('Examinations', Icons.assignment_outlined, 'Manage exams and marks',
-          AppRoutes.examinationManagement),
-      ('Past Pupils', Icons.history_edu_outlined, 'Review alumni records',
-          AppRoutes.historicalPastPupils),
-      ('Database Backup', Icons.backup_outlined, 'Backup application data',
-          AppRoutes.backupManagement),
-    ];
-
-    return GridView.extent(
-      maxCrossAxisExtent: 300,
-      crossAxisSpacing: 16,
-      mainAxisSpacing: 16,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: actions
-          .map(
-            (action) => QuickActionCard(
-              title: action.$1,
-              icon: action.$2,
-              subtitle: action.$3,
-              onTap: () => Navigator.of(context).pushNamed(action.$4),
-            ),
-          )
-          .toList(),
-    );
-  }
-}
-
-class NavigationTile extends StatefulWidget {
-  final String label;
-  final IconData icon;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const NavigationTile({
-    super.key,
-    required this.label,
-    required this.icon,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  State<NavigationTile> createState() => _NavigationTileState();
-}
-
-class _NavigationTileState extends State<NavigationTile> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              color: widget.isSelected
-                  ? colorScheme.primaryContainer
-                  : _isHovered
-                      ? colorScheme.secondaryContainer.withValues(alpha: 0.5)
-                      : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  widget.icon,
-                  size: 20,
-                  color: widget.isSelected
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    widget.label,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: widget.isSelected
-                              ? colorScheme.primary
-                              : colorScheme.onSurface,
-                          fontWeight: widget.isSelected
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                        ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class MetricCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  const MetricCard({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border.all(color: colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class QuickActionCard extends StatefulWidget {
-  final String title;
-  final IconData icon;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const QuickActionCard({
-    super.key,
-    required this.title,
-    required this.icon,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  State<QuickActionCard> createState() => _QuickActionCardState();
-}
-
-class _QuickActionCardState extends State<QuickActionCard> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              border: Border.all(
-                color: _isHovered
-                    ? colorScheme.primary.withValues(alpha: 0.5)
-                    : colorScheme.outlineVariant,
-                width: _isHovered ? 2 : 1,
-              ),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: _isHovered
-                  ? [
-                      BoxShadow(
-                        color: colorScheme.primary.withValues(alpha: 0.15),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    widget.icon,
-                    color: colorScheme.primary,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  widget.title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  widget.subtitle,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Spacer(),
-                    Icon(
-                      Icons.arrow_forward,
-                      size: 18,
-                      color: _isHovered
-                          ? colorScheme.primary
-                          : colorScheme.onSurfaceVariant,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 1100 ? 3 : constraints.maxWidth >= 700 ? 2 : 1;
+            return GridView.count(
+              crossAxisCount: columns,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: columns == 1 ? 3.2 : 2.6,
+              children: actions
+                  .map(
+                    (a) => GlassQuickActionCard(
+                      title: a.$1,
+                      subtitle: a.$3,
+                      icon: a.$2,
+                      onTap: () => Navigator.of(context).pushNamed(a.$4),
                     ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+                  )
+                  .toList(),
+            );
+          },
         ),
-      ),
+      ],
     );
   }
 }

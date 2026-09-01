@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../../app/widgets/date_picker_field.dart';
+
 import '../../core/examinations/examination_repository.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/utils/app_validators.dart';
+import '../../core/utils/error_messages.dart';
 
 class ExaminationManagementPage extends StatefulWidget {
   const ExaminationManagementPage({
@@ -60,8 +63,11 @@ class _ExaminationManagementPageState extends State<ExaminationManagementPage> {
       );
       _message('Examination created.');
       setState(reload);
-    } catch (_) {
-      _message('Unable to create examination.', error: true);
+    } catch (error) {
+      _message(
+        userFacingError(error, fallback: 'Unable to create examination.'),
+        error: true,
+      );
     }
   }
 
@@ -101,7 +107,12 @@ class _ExaminationManagementPageState extends State<ExaminationManagementPage> {
                   if (!snapshot.hasData) {
                     return Center(
                       child: snapshot.hasError
-                          ? const Text('Unable to load examinations.')
+                          ? Text(
+                              userFacingError(
+                                snapshot.error!,
+                                fallback: 'Unable to load examinations.',
+                              ),
+                            )
                           : const CircularProgressIndicator(),
                     );
                   }
@@ -237,8 +248,11 @@ class _MarksEntryPageState extends State<MarksEntryPage> {
         'Present students need valid marks within the total.',
         error: true,
       );
-    } catch (_) {
-      _message('Unable to save marks.', error: true);
+    } catch (error) {
+      _message(
+        userFacingError(error, fallback: 'Unable to save marks.'),
+        error: true,
+      );
     }
   }
 
@@ -251,7 +265,12 @@ class _MarksEntryPageState extends State<MarksEntryPage> {
         if (!snapshot.hasData) {
           return Center(
             child: snapshot.hasError
-                ? const Text('Unable to load examination.')
+                ? Text(
+                    userFacingError(
+                      snapshot.error!,
+                      fallback: 'Unable to load examination.',
+                    ),
+                  )
                 : const CircularProgressIndicator(),
           );
         }
@@ -398,7 +417,7 @@ Future<ExamEditorValues?> showExamEditor(
 ) async {
   final name = TextEditingController();
   final date = TextEditingController(
-    text: DateTime.now().toIso8601String().split('T').first,
+    text: AppDateFormats.storage(DateTime.now()),
   );
   final total = TextEditingController(text: '100');
   int? historyId = histories.isEmpty ? null : histories.first['id']! as int;
@@ -434,11 +453,12 @@ Future<ExamEditorValues?> showExamEditor(
                   labelText: 'Examination Name',
                 ),
               ),
-              TextField(
+              DatePickerField(
                 controller: date,
-                decoration: const InputDecoration(
-                  labelText: 'Examination Date',
-                ),
+                label: 'Examination Date',
+                required: true,
+                firstDate: DateTime(2000),
+                lastDate: DateTime(2100),
               ),
               TextField(
                 controller: total,

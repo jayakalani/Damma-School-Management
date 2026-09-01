@@ -49,7 +49,7 @@ class StudentRepository {
       await _requireAdmin(transaction, adminId);
       final now = DateTime.now().toUtc().toIso8601String();
       final id = await transaction.insert('students', {
-        ..._cleanDetails(details),
+        ..._studentDetails(details),
         'status': 'student',
         'created_at': now,
         'updated_at': now,
@@ -80,7 +80,7 @@ class StudentRepository {
       await transaction.update(
         'students',
         {
-          ..._cleanDetails(details),
+          ..._studentDetails(details),
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         where: 'id = ?',
@@ -191,13 +191,17 @@ class StudentRepository {
         (details['joined_date']?.toString().trim() ?? '').isEmpty) {
       throw const InvalidStudentException();
     }
-    if (AppValidators.nic(details['nic']) != null ||
-        AppValidators.phone(details['phone_number']) != null ||
+    if (AppValidators.phone(details['phone_number']) != null ||
         AppValidators.optionalDate(details['date_of_birth']) != null ||
         AppValidators.date(details['joined_date'], 'Joined date') != null) {
       throw const InvalidStudentException();
     }
   }
+
+  Map<String, Object?> _studentDetails(Map<String, Object?> details) => {
+    ..._cleanDetails(details),
+    'nic': null,
+  };
 
   Future<void> _requireAdmin(DatabaseExecutor database, int adminId) async {
     final rows = await database.query(
