@@ -1,7 +1,10 @@
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../app/widgets/glass_ui.dart';
+import '../../core/export/staff_export_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/users/user_repository.dart';
 
@@ -22,8 +25,10 @@ class StaffManagementPage extends StatefulWidget {
 class _StaffManagementPageState extends State<StaffManagementPage> {
   final search = TextEditingController();
   final repository = UserRepository();
-  String? statusFilter;
-  late Future<List<Map<String, Object?>>> staff;
+  final exportService = const StaffExportService();
+  String? _activeStatusFilter;
+  String? _pendingStatusFilter;
+  late Future<List<Map<String, Object?>>> _allStaff;
 
   int get adminId => widget.auth.currentSession!.userId;
 
@@ -31,7 +36,7 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
   void initState() {
     super.initState();
     widget.auth.requireRole('admin');
-    reload();
+    _reloadAll();
   }
 
   @override
@@ -40,16 +45,101 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
     super.dispose();
   }
 
-  void reload() {
-    staff = repository.searchStaff(
+  void _reloadAll() {
+    _allStaff = repository.listStaff(
       database: widget.database,
       adminId: adminId,
-      query: search.text,
-      status: statusFilter,
     );
   }
 
-  void refreshList() => setState(reload);
+  void refreshList() => setState(_reloadAll);
+
+  void _applyFilters() {
+    setState(() {
+      _activeStatusFilter = _pendingStatusFilter;
+    });
+  }
+
+  void _resetFilters() {
+    setState(() {
+      search.clear();
+      _pendingStatusFilter = null;
+      _activeStatusFilter = null;
+    });
+  }
+
+  List<Map<String, Object?>> _filterStaff(List<Map<String, Object?>> members) {
+    final query = search.text.trim().toLowerCase();
+    return members.where((member) {
+      final matchesQuery = query.isEmpty ||
+          (member['full_name']! as String).toLowerCase().contains(query) ||
+          (member['username']! as String).toLowerCase().contains(query);
+      final matchesStatus =
+          _activeStatusFilter == null ||
+          member['status'] == _activeStatusFilter;
+      return matchesQuery && matchesStatus;
+    }).toList();
+  }
+
+  StaffExportFilters get _exportFilters => StaffExportFilters(
+        searchQuery: search.text,
+        statusFilter: _activeStatusFilter,
+      );
+
+  String _exportTimestamp() {
+    final now = DateTime.now();
+    return '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_'
+        '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _exportCsv() async {
+    if (kIsWeb) {
+      _message('Export is available in the desktop app.', error: true);
+      return;
+    }
+    try {
+      final members = _filterStaff(await _allStaff);
+      final location = await getSaveLocation(
+        suggestedName: 'staff_${_exportTimestamp()}.csv',
+        acceptedTypeGroups: const [
+          XTypeGroup(label: 'CSV', extensions: ['csv']),
+        ],
+      );
+      if (location == null || !mounted) return;
+      await exportService.writeTextFile(
+        path: location.path,
+        contents: exportService.buildCsv(members, filters: _exportFilters),
+      );
+      _message('Staff CSV exported (${members.length} record(s)).');
+    } catch (_) {
+      _message('Unable to export staff CSV.', error: true);
+    }
+  }
+
+  Future<void> _exportPdf() async {
+    if (kIsWeb) {
+      _message('Export is available in the desktop app.', error: true);
+      return;
+    }
+    try {
+      final members = _filterStaff(await _allStaff);
+      final location = await getSaveLocation(
+        suggestedName: 'staff_${_exportTimestamp()}.pdf',
+        acceptedTypeGroups: const [
+          XTypeGroup(label: 'PDF', extensions: ['pdf']),
+        ],
+      );
+      if (location == null || !mounted) return;
+      final bytes = await exportService.buildPdf(
+        members,
+        filters: _exportFilters,
+      );
+      await exportService.writeBytesFile(path: location.path, bytes: bytes);
+      _message('Staff PDF exported (${members.length} record(s)).');
+    } catch (_) {
+      _message('Unable to export staff PDF.', error: true);
+    }
+  }
 
   Future<void> createStaff() async {
     final values = await showStaffEditor(context);
@@ -90,7 +180,9 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
     final confirmed = await showConfirmActionDialog(
       context,
       icon: active ? Icons.person_off_outlined : Icons.person_outline,
-      iconColor: active ? Colors.orange.shade700 : Theme.of(context).colorScheme.primary,
+      iconColor: active
+          ? Colors.orange.shade700
+          : Theme.of(context).colorScheme.primary,
       title: active ? 'Deactivate staff account?' : 'Activate staff account?',
       message: active
           ? '$username will lose access immediately. You can reactivate the account later.'
@@ -144,7 +236,8 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
       icon: Icons.lock_reset_outlined,
       iconColor: Theme.of(context).colorScheme.primary,
       title: 'Reset staff password?',
-      message: 'Set a new password for $username. They will need it on next login.',
+      message:
+          'Set a new password for $username. They will need it on next login.',
       confirmLabel: 'Continue',
     );
     if (!confirmed || !mounted) return;
@@ -189,122 +282,80 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
     final accent = theme.colorScheme.primary;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Staff Management'),
-        leading: IconButton(
-          tooltip: 'Back',
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Material(
-            elevation: 0,
-            color: theme.colorScheme.surface,
-            shadowColor: Colors.black.withValues(alpha: 0.08),
-            child: Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                border: Border(
-                  bottom: BorderSide(
-                    color: theme.dividerColor.withValues(alpha: 0.35),
-                  ),
-                ),
-                boxShadow: floatingShadow(opacity: 0.06, blur: 12, y: 4),
-              ),
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Manage staff accounts and access.',
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+      backgroundColor: const Color(0xFFEEF4F7),
+      body: DashboardBackdrop(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: GlassSurface(
+                borderRadius: BorderRadius.circular(18),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                opacity: 0.78,
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Back',
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      onPressed: () => Navigator.of(context).pop(),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final stacked = constraints.maxWidth < 720;
-                      return Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        crossAxisAlignment: WrapCrossAlignment.center,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            width: stacked ? constraints.maxWidth : 300,
-                            child: TextField(
-                              controller: search,
-                              onChanged: (_) => refreshList(),
-                              decoration: _softInputDecoration(
-                                context,
-                                label: 'Search staff',
-                                prefixIcon: Icon(Icons.search, color: accent),
-                              ),
+                          Text(
+                            'Staff Management',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          _SoftDropdown<String?>(
-                            value: statusFilter,
-                            hint: 'All statuses',
-                            width: stacked ? constraints.maxWidth : 180,
-                            items: const [
-                              DropdownMenuItem<String?>(
-                                value: null,
-                                child: Text('All statuses'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'active',
-                                child: Text('Active'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'inactive',
-                                child: Text('Disabled'),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              setState(() {
-                                statusFilter = value;
-                                reload();
-                              });
-                            },
-                          ),
-                          IconButton.filledTonal(
-                            tooltip: 'Refresh',
-                            onPressed: refreshList,
-                            icon: const Icon(Icons.refresh),
-                            style: IconButton.styleFrom(
-                              foregroundColor: accent,
-                            ),
-                          ),
-                          FilledButton.icon(
-                            onPressed: createStaff,
-                            icon: const Icon(Icons.person_add_outlined),
-                            label: const Text('Add Staff'),
-                            style: FilledButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 14,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
+                          Text(
+                            'Manage accounts, access, and permissions',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
-                      );
-                    },
-                  ),
-                ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _BlendedToolbarButton(
+                      label: 'Export CSV',
+                      icon: Icons.table_chart_outlined,
+                      accent: const Color(0xFF16A34A),
+                      onPressed: _exportCsv,
+                    ),
+                    _BlendedToolbarButton(
+                      label: 'Export PDF',
+                      icon: Icons.picture_as_pdf_outlined,
+                      accent: const Color(0xFFE11D48),
+                      onPressed: _exportPdf,
+                    ),
+                    _BlendedToolbarButton(
+                      label: 'Add Staff',
+                      icon: Icons.person_add_outlined,
+                      accent: accent,
+                      onPressed: createStaff,
+                      emphasized: true,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
               child: FutureBuilder<List<Map<String, Object?>>>(
-                future: staff,
+                future: _allStaff,
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return const Center(
@@ -314,155 +365,492 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
                   if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  if (snapshot.data!.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.people_outline,
-                            size: 48,
-                            color: theme.colorScheme.outline,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No staff members found.',
-                            style: theme.textTheme.titleMedium,
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-                  return Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                        color: theme.dividerColor.withValues(alpha: 0.4),
-                      ),
-                    ),
-                    shadowColor: Colors.black.withValues(alpha: 0.08),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: floatingShadow(opacity: 0.05, blur: 16, y: 6),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: ListView.separated(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemCount: snapshot.data!.length,
-                          separatorBuilder: (_, __) => Divider(
-                            height: 1,
-                            indent: 16,
-                            endIndent: 16,
-                            color: theme.dividerColor.withValues(alpha: 0.35),
-                          ),
-                          itemBuilder: (context, index) {
-                            final member = snapshot.data![index];
-                            return _StaffListTile(
-                              member: member,
-                              onEdit: () => editStaff(member),
-                              onResetPassword: () => resetPassword(member),
-                              onToggleStatus: () => changeStatus(member),
-                              onDelete: () => deleteStaff(member),
+
+                  final allMembers = snapshot.data!;
+                  final visibleMembers = _filterStaff(allMembers);
+                  final activeCount = allMembers
+                      .where((m) => m['status'] == 'active')
+                      .length;
+                  final disabledCount = allMembers
+                      .where((m) => m['status'] == 'inactive')
+                      .length;
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final columns = constraints.maxWidth >= 900
+                                ? 3
+                                : constraints.maxWidth >= 560
+                                    ? 2
+                                    : 1;
+                            return GridView.count(
+                              crossAxisCount: columns,
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              crossAxisSpacing: 14,
+                              mainAxisSpacing: 14,
+                              childAspectRatio: columns == 1 ? 4.8 : 4.2,
+                              children: [
+                                _SummaryStatCard(
+                                  label: 'Total Staff',
+                                  value: '${allMembers.length}',
+                                  valueColor: theme.colorScheme.onSurface,
+                                  accentColor: accent,
+                                ),
+                                _SummaryStatCard(
+                                  label: 'Active',
+                                  value: '$activeCount',
+                                  valueColor: const Color(0xFF16A34A),
+                                  accentColor: const Color(0xFF16A34A),
+                                ),
+                                _SummaryStatCard(
+                                  label: 'Disabled',
+                                  value: '$disabledCount',
+                                  valueColor: const Color(0xFFEA580C),
+                                  accentColor: const Color(0xFFEA580C),
+                                ),
+                              ],
                             );
                           },
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        _GlassPanel(
+                          child: Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 280,
+                                child: TextField(
+                                  controller: search,
+                                  onChanged: (_) => setState(() {}),
+                                  decoration: _glassInputDecoration(
+                                    context,
+                                    hint: 'Search staff...',
+                                    prefixIcon: Icons.search_rounded,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 180,
+                                child: DropdownButtonFormField<String?>(
+                                  initialValue: _pendingStatusFilter,
+                                  decoration: _glassInputDecoration(
+                                    context,
+                                    hint: 'All Status',
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                  items: const [
+                                    DropdownMenuItem<String?>(
+                                      value: null,
+                                      child: Text('All Status'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'active',
+                                      child: Text('Active'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'inactive',
+                                      child: Text('Disabled'),
+                                    ),
+                                  ],
+                                  onChanged: (value) => setState(
+                                    () => _pendingStatusFilter = value,
+                                  ),
+                                ),
+                              ),
+                              _GlassActionButton(
+                                label: 'Apply',
+                                filled: true,
+                                onPressed: _applyFilters,
+                              ),
+                              _GlassActionButton(
+                                label: 'Reset',
+                                onPressed: _resetFilters,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _GlassPanel(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.people_alt_outlined,
+                                    color: accent,
+                                    size: 22,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    'Staff Directory',
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    '${visibleMembers.length} shown',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              if (visibleMembers.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 48,
+                                  ),
+                                  child: Center(
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.people_outline,
+                                          size: 48,
+                                          color: theme.colorScheme.outline,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          'No staff members found.',
+                                          style: theme.textTheme.titleMedium,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              else ...[
+                                _StaffTableHeader(),
+                                const SizedBox(height: 8),
+                                for (final member in visibleMembers)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: _StaffTableRow(
+                                      member: member,
+                                      onEdit: () => editStaff(member),
+                                      onReset: () => resetPassword(member),
+                                      onToggleStatus: () =>
+                                          changeStatus(member),
+                                      onDelete: () => deleteStaff(member),
+                                    ),
+                                  ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 },
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BlendedToolbarButton extends StatefulWidget {
+  const _BlendedToolbarButton({
+    required this.label,
+    required this.icon,
+    required this.accent,
+    required this.onPressed,
+    this.emphasized = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color accent;
+  final VoidCallback onPressed;
+  final bool emphasized;
+
+  @override
+  State<_BlendedToolbarButton> createState() => _BlendedToolbarButtonState();
+}
+
+class _BlendedToolbarButtonState extends State<_BlendedToolbarButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final background = _hovered
+        ? Color.alphaBlend(Colors.black.withValues(alpha: 0.08), widget.accent)
+        : widget.accent;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        scale: _hovered ? 1.03 : 1,
+        duration: const Duration(milliseconds: 180),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onPressed,
+            borderRadius: BorderRadius.circular(12),
+            splashColor: Colors.white.withValues(alpha: 0.2),
+            highlightColor: Colors.white.withValues(alpha: 0.1),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+              decoration: BoxDecoration(
+                color: background,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: _hovered
+                    ? floatingShadow(
+                        color: widget.accent,
+                        opacity: 0.2,
+                        blur: 14,
+                        y: 6,
+                      )
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(widget.icon, size: 18, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.label,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ],
+              ),
+            ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryStatCard extends StatefulWidget {
+  const _SummaryStatCard({
+    required this.label,
+    required this.value,
+    required this.valueColor,
+    required this.accentColor,
+  });
+
+  final String label;
+  final String value;
+  final Color valueColor;
+  final Color accentColor;
+
+  @override
+  State<_SummaryStatCard> createState() => _SummaryStatCardState();
+}
+
+class _SummaryStatCardState extends State<_SummaryStatCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        scale: _hovered ? 1.02 : 1,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: GlassSurface(
+            borderRadius: BorderRadius.circular(14),
+            padding: EdgeInsets.zero,
+            opacity: _hovered ? 0.84 : 0.74,
+            borderOpacity: _hovered ? 0.72 : 0.55,
+            tint: _hovered
+                ? Color.alphaBlend(
+                    widget.accentColor.withValues(alpha: 0.05),
+                    Colors.white,
+                  )
+                : Colors.white,
+            elevated: _hovered,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(height: 3, color: widget.accentColor),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.label,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        widget.value,
+                        style:
+                            Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                  color: widget.valueColor,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1,
+                                  letterSpacing: -0.5,
+                                ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassPanel extends StatelessWidget {
+  const _GlassPanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassSurface(
+      borderRadius: BorderRadius.circular(18),
+      padding: const EdgeInsets.all(20),
+      opacity: 0.76,
+      child: child,
+    );
+  }
+}
+
+class _GlassActionButton extends StatefulWidget {
+  const _GlassActionButton({
+    required this.label,
+    required this.onPressed,
+    this.filled = false,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+  final bool filled;
+
+  @override
+  State<_GlassActionButton> createState() => _GlassActionButtonState();
+}
+
+class _GlassActionButtonState extends State<_GlassActionButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        scale: _hovered ? 1.03 : 1,
+        duration: const Duration(milliseconds: 180),
+        child: widget.filled
+            ? FilledButton(
+                onPressed: widget.onPressed,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: _hovered ? 3 : 0,
+                ),
+                child: Text(widget.label),
+              )
+            : OutlinedButton(
+                onPressed: widget.onPressed,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: accent,
+                  side: BorderSide(
+                    color: accent.withValues(alpha: _hovered ? 0.6 : 0.35),
+                  ),
+                  backgroundColor: _hovered
+                      ? accent.withValues(alpha: 0.06)
+                      : Colors.transparent,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(widget.label),
+              ),
+      ),
+    );
+  }
+}
+
+class _StaffTableHeader extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+        );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          Expanded(flex: 1, child: Text('ID', style: style)),
+          Expanded(flex: 3, child: Text('FULL NAME', style: style)),
+          Expanded(flex: 2, child: Text('USERNAME', style: style)),
+          Expanded(flex: 2, child: Text('CREATED', style: style)),
+          Expanded(flex: 2, child: Text('STATUS', style: style)),
+          Expanded(flex: 5, child: Text('ACTIONS', style: style)),
         ],
       ),
     );
   }
 }
 
-class _StaffListTile extends StatelessWidget {
-  const _StaffListTile({
+class _StaffTableRow extends StatefulWidget {
+  const _StaffTableRow({
     required this.member,
     required this.onEdit,
-    required this.onResetPassword,
+    required this.onReset,
     required this.onToggleStatus,
     required this.onDelete,
   });
 
   final Map<String, Object?> member;
   final VoidCallback onEdit;
-  final VoidCallback onResetPassword;
+  final VoidCallback onReset;
   final VoidCallback onToggleStatus;
   final VoidCallback onDelete;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accent = theme.colorScheme.primary;
-    final status = member['status']! as String;
-    final active = status == 'active';
-    final createdAt = _formatCreatedAt(member['created_at']! as String);
+  State<_StaffTableRow> createState() => _StaffTableRowState();
+}
 
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              member['full_name']! as String,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          StaffStatusBadge(status: status),
-        ],
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: Text(
-          '@${member['username']}  ·  Created $createdAt',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-      trailing: Wrap(
-        spacing: 4,
-        children: [
-          IconButton(
-            tooltip: 'Edit',
-            onPressed: onEdit,
-            icon: Icon(Icons.edit_outlined, color: accent),
-          ),
-          IconButton(
-            tooltip: 'Reset password',
-            onPressed: onResetPassword,
-            icon: Icon(Icons.lock_reset_outlined, color: accent),
-          ),
-          IconButton(
-            tooltip: active ? 'Deactivate' : 'Activate',
-            onPressed: onToggleStatus,
-            icon: Icon(
-              active ? Icons.person_off_outlined : Icons.person_outline,
-              color: active ? Colors.orange.shade700 : accent,
-            ),
-          ),
-          IconButton(
-            tooltip: 'Delete',
-            onPressed: onDelete,
-            icon: Icon(
-              Icons.delete_outline,
-              color: theme.colorScheme.error,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+class _StaffTableRowState extends State<_StaffTableRow> {
+  bool _hovered = false;
 
   String _formatCreatedAt(String raw) {
     final parsed = DateTime.tryParse(raw);
@@ -470,125 +858,221 @@ class _StaffListTile extends StatelessWidget {
     final local = parsed.toLocal();
     return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
   }
-}
-
-class StaffStatusBadge extends StatelessWidget {
-  const StaffStatusBadge({super.key, required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, background, foreground) = switch (status) {
-      'active' => (
-          'Active',
-          Colors.green.withValues(alpha: 0.14),
-          Colors.green.shade800,
-        ),
-      'inactive' => (
-          'Disabled',
-          Colors.red.withValues(alpha: 0.14),
-          Colors.red.shade800,
-        ),
-      'pending' => (
-          'Pending',
-          Colors.amber.withValues(alpha: 0.18),
-          Colors.amber.shade900,
-        ),
-      _ => (
-          status,
-          Colors.grey.withValues(alpha: 0.14),
-          Colors.grey.shade800,
-        ),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: foreground,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.2,
-            ),
-      ),
-    );
-  }
-}
-
-class _SoftDropdown<T> extends StatelessWidget {
-  const _SoftDropdown({
-    required this.value,
-    required this.hint,
-    required this.items,
-    required this.onChanged,
-    this.width,
-  });
-
-  final T? value;
-  final String hint;
-  final List<DropdownMenuItem<T>> items;
-  final ValueChanged<T?> onChanged;
-  final double? width;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      width: width,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.45),
-        ),
-        boxShadow: floatingShadow(opacity: 0.04, blur: 10, y: 3),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<T>(
-          value: value,
-          isExpanded: true,
-          hint: Text(hint),
-          items: items,
-          onChanged: onChanged,
-          borderRadius: BorderRadius.circular(12),
-          icon: Icon(Icons.expand_more, color: theme.colorScheme.primary),
+    final accent = theme.colorScheme.primary;
+    final active = widget.member['status'] == 'active';
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        scale: _hovered ? 1.005 : 1,
+        duration: const Duration(milliseconds: 180),
+        child: GlassSurface(
+          borderRadius: BorderRadius.circular(14),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          opacity: _hovered ? 0.84 : 0.7,
+          borderOpacity: _hovered ? 0.7 : 0.5,
+          tint: _hovered
+              ? Color.alphaBlend(accent.withValues(alpha: 0.04), Colors.white)
+              : Colors.white,
+          elevated: _hovered,
+          child: Row(
+            children: [
+              Expanded(
+                flex: 1,
+                child: Text(
+                  '#${widget.member['id']}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  widget.member['full_name']! as String,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  '@${widget.member['username']}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  _formatCreatedAt(widget.member['created_at']! as String),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: StaffStatusToggle(
+                  active: active,
+                  onChanged: widget.onToggleStatus,
+                ),
+              ),
+              Expanded(
+                flex: 5,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _ActionChipButton(
+                      label: 'Edit',
+                      color: const Color(0xFF2563EB),
+                      onPressed: widget.onEdit,
+                    ),
+                    _ActionChipButton(
+                      label: 'Reset',
+                      color: accent,
+                      onPressed: widget.onReset,
+                    ),
+                    _ActionChipButton(
+                      label: 'Delete',
+                      color: theme.colorScheme.error,
+                      onPressed: widget.onDelete,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-InputDecoration _softInputDecoration(
+class _ActionChipButton extends StatefulWidget {
+  const _ActionChipButton({
+    required this.label,
+    required this.color,
+    required this.onPressed,
+  });
+
+  final String label;
+  final Color color;
+  final VoidCallback onPressed;
+
+  @override
+  State<_ActionChipButton> createState() => _ActionChipButtonState();
+}
+
+class _ActionChipButtonState extends State<_ActionChipButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        scale: _hovered ? 1.05 : 1,
+        duration: const Duration(milliseconds: 160),
+        child: OutlinedButton(
+          onPressed: widget.onPressed,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: widget.color,
+            side: BorderSide(
+              color: widget.color.withValues(alpha: _hovered ? 0.55 : 0.35),
+            ),
+            backgroundColor: widget.color.withValues(
+              alpha: _hovered ? 0.14 : 0.06,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: Text(
+            widget.label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: widget.color,
+                ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class StaffStatusToggle extends StatelessWidget {
+  const StaffStatusToggle({
+    super.key,
+    required this.active,
+    required this.onChanged,
+  });
+
+  final bool active;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Switch(
+          value: active,
+          onChanged: (_) => onChanged(),
+          activeTrackColor: const Color(0xFF16A34A).withValues(alpha: 0.55),
+          activeThumbColor: const Color(0xFF16A34A),
+          inactiveTrackColor: Colors.grey.shade400.withValues(alpha: 0.5),
+          inactiveThumbColor: Colors.grey.shade600,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          active ? 'Active' : 'Inactive',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: active
+                    ? const Color(0xFF16A34A)
+                    : Colors.grey.shade600,
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+InputDecoration _glassInputDecoration(
   BuildContext context, {
-  required String label,
-  Widget? prefixIcon,
+  required String hint,
+  IconData? prefixIcon,
 }) {
   final theme = Theme.of(context);
   final accent = theme.colorScheme.primary;
   return InputDecoration(
-    labelText: label,
-    prefixIcon: prefixIcon,
+    hintText: hint,
+    prefixIcon: prefixIcon != null ? Icon(prefixIcon, size: 20) : null,
     filled: true,
-    fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    fillColor: Colors.white.withValues(alpha: 0.45),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide.none,
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
     ),
     enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       borderSide: BorderSide(
-        color: theme.dividerColor.withValues(alpha: 0.45),
+        color: theme.dividerColor.withValues(alpha: 0.35),
       ),
     ),
     focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       borderSide: BorderSide(color: accent, width: 1.5),
     ),
   );
@@ -677,6 +1161,36 @@ class StaffEditorValues {
   final String username;
   final String status;
   final String? password;
+}
+
+InputDecoration _softInputDecoration(
+  BuildContext context, {
+  required String label,
+  Widget? prefixIcon,
+}) {
+  final theme = Theme.of(context);
+  final accent = theme.colorScheme.primary;
+  return InputDecoration(
+    labelText: label,
+    prefixIcon: prefixIcon,
+    filled: true,
+    fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide.none,
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(
+        color: theme.dividerColor.withValues(alpha: 0.45),
+      ),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: accent, width: 1.5),
+    ),
+  );
 }
 
 Future<StaffEditorValues?> showStaffEditor(

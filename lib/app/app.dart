@@ -22,6 +22,12 @@ class DammaSchoolApp extends StatelessWidget {
     return MaterialApp(
       title: 'Damma School Management System',
       theme: AppTheme.light(),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: const TextScaler.linear(1.1),
+        ),
+        child: child!,
+      ),
       initialRoute: AppRoutes.login,
       onGenerateRoute: (settings) => AppRoutes.generate(
         settings,
