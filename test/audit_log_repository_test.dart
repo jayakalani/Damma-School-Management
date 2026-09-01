@@ -106,7 +106,6 @@ void main() {
     sqfliteFfiInit();
     final database = AppDatabase(factory: databaseFactoryFfi);
     final connection = await database.openAt(inMemoryDatabasePath);
-    final adminId = (await connection.query('users')).single['id']! as int;
     final staffId = await connection.insert('users', {
       'full_name': 'Staff',
       'username': 'staff',

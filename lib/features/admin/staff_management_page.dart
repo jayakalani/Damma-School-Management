@@ -250,14 +250,17 @@ class _StaffManagementPageState extends State<StaffManagementPage> {
               child: FutureBuilder<List<Map<String, Object?>>>(
                 future: staff,
                 builder: (context, snapshot) {
-                  if (snapshot.hasError)
+                  if (snapshot.hasError) {
                     return const Center(
                       child: Text('Unable to load staff members.'),
                     );
-                  if (!snapshot.hasData)
+                  }
+                  if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
-                  if (snapshot.data!.isEmpty)
+                  }
+                  if (snapshot.data!.isEmpty) {
                     return const Center(child: Text('No staff members found.'));
+                  }
                   return Card(
                     child: ListView.separated(
                       padding: const EdgeInsets.all(8),
@@ -397,11 +400,13 @@ Future<StaffEditorValues?> showStaffEditor(
           ),
           FilledButton(
             onPressed: () {
-              if (fullName.text.trim().isEmpty || username.text.trim().isEmpty)
+              if (fullName.text.trim().isEmpty || username.text.trim().isEmpty) {
                 return;
+              }
               if (member == null &&
-                  (password.text.isEmpty || password.text != confirm.text))
+                  (password.text.isEmpty || password.text != confirm.text)) {
                 return;
+              }
               Navigator.pop(
                 context,
                 StaffEditorValues(
@@ -463,8 +468,9 @@ Future<String?> showPasswordReset(BuildContext context) async {
           ),
           FilledButton(
             onPressed: () {
-              if (password.text.isNotEmpty && password.text == confirm.text)
+              if (password.text.isNotEmpty && password.text == confirm.text) {
                 Navigator.pop(context, password.text);
+              }
             },
             child: const Text('Reset'),
           ),

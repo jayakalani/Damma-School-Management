@@ -11,8 +11,10 @@ class ExaminationManagementPage extends StatefulWidget {
     required this.database,
     required this.auth,
   });
+
   final Database database;
   final AuthService auth;
+
   @override
   State<ExaminationManagementPage> createState() =>
       _ExaminationManagementPageState();
@@ -21,11 +23,12 @@ class ExaminationManagementPage extends StatefulWidget {
 class _ExaminationManagementPageState extends State<ExaminationManagementPage> {
   final repository = ExaminationRepository();
   late Future<List<Map<String, Object?>>> examinations;
+
   int get adminId => widget.auth.currentSession!.userId;
+
   @override
   void initState() {
     super.initState();
-    widget.auth.requireRole('admin');
     reload();
   }
 
@@ -42,8 +45,10 @@ class _ExaminationManagementPageState extends State<ExaminationManagementPage> {
       adminId: adminId,
     );
     if (!mounted) return;
+
     final value = await showExamEditor(context, histories);
     if (value == null || !mounted) return;
+
     try {
       await repository.createExamination(
         database: widget.database,
@@ -61,74 +66,85 @@ class _ExaminationManagementPageState extends State<ExaminationManagementPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Examinations'),
-      leading: IconButton(
-        tooltip: 'Back',
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => Navigator.pop(context),
+  Widget build(BuildContext context) {
+    if (!widget.auth.canAccess(role: 'admin') &&
+        !widget.auth.canAccess(role: 'staff')) {
+      return const SizedBox.shrink();
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Examinations'),
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-    ),
-    body: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: createExam,
-              icon: const Icon(Icons.add),
-              label: const Text('Define Examination'),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: createExam,
+                icon: const Icon(Icons.add),
+                label: const Text('Define Examination'),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: FutureBuilder<List<Map<String, Object?>>>(
-              future: examinations,
-              builder: (context, snapshot) {
-                if (!snapshot.hasData)
-                  return Center(
-                    child: snapshot.hasError
-                        ? const Text('Unable to load examinations.')
-                        : const CircularProgressIndicator(),
-                  );
-                if (snapshot.data!.isEmpty)
-                  return const Center(child: Text('No examinations defined.'));
-                return Card(
-                  child: ListView.separated(
-                    itemCount: snapshot.data!.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final exam = snapshot.data![index];
-                      return ListTile(
-                        leading: const Icon(Icons.assignment_outlined),
-                        title: Text(exam['examination_name']! as String),
-                        subtitle: Text(
-                          '${exam['batch_name']} | ${exam['academic_year']} - ${exam['grade']} | Total ${exam['total_marks']}',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => MarksEntryPage(
-                              database: widget.database,
-                              auth: widget.auth,
-                              examinationId: exam['id']! as int,
+            const SizedBox(height: 16),
+            Expanded(
+              child: FutureBuilder<List<Map<String, Object?>>>(
+                future: examinations,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return Center(
+                      child: snapshot.hasError
+                          ? const Text('Unable to load examinations.')
+                          : const CircularProgressIndicator(),
+                    );
+                  }
+                  if (snapshot.data!.isEmpty) {
+                    return const Center(child: Text('No examinations defined.'));
+                  }
+
+                  return Card(
+                    child: ListView.separated(
+                      itemCount: snapshot.data!.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final exam = snapshot.data![index];
+                        return ListTile(
+                          leading: const Icon(Icons.assignment_outlined),
+                          title: Text(exam['examination_name']! as String),
+                          subtitle: Text(
+                            '${exam['batch_name']} | ${exam['academic_year']} - ${exam['grade']} | Total ${exam['total_marks']}',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => MarksEntryPage(
+                                database: widget.database,
+                                auth: widget.auth,
+                                examinationId: exam['id']! as int,
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
+
   void _message(String text, {bool error = false}) =>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -145,9 +161,11 @@ class MarksEntryPage extends StatefulWidget {
     required this.auth,
     required this.examinationId,
   });
+
   final Database database;
   final AuthService auth;
   final int examinationId;
+
   @override
   State<MarksEntryPage> createState() => _MarksEntryPageState();
 }
@@ -157,7 +175,9 @@ class _MarksEntryPageState extends State<MarksEntryPage> {
   late Future<ExaminationDetails> details;
   final marks = <int, TextEditingController>{};
   final attendance = <int, bool>{};
+
   int get adminId => widget.auth.currentSession!.userId;
+
   @override
   void initState() {
     super.initState();
@@ -185,7 +205,9 @@ class _MarksEntryPageState extends State<MarksEntryPage> {
 
   @override
   void dispose() {
-    for (final controller in marks.values) controller.dispose();
+    for (final controller in marks.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -201,6 +223,7 @@ class _MarksEntryPageState extends State<MarksEntryPage> {
             marks: num.tryParse(marks[student['id']! as int]!.text.trim()),
           ),
       ];
+
       await repository.saveResults(
         database: widget.database,
         adminId: adminId,
@@ -225,12 +248,14 @@ class _MarksEntryPageState extends State<MarksEntryPage> {
     body: FutureBuilder<ExaminationDetails>(
       future: details,
       builder: (context, snapshot) {
-        if (!snapshot.hasData)
+        if (!snapshot.hasData) {
           return Center(
             child: snapshot.hasError
                 ? const Text('Unable to load examination.')
                 : const CircularProgressIndicator(),
           );
+        }
+
         final data = snapshot.data!;
         return ListView(
           padding: const EdgeInsets.all(24),
@@ -271,6 +296,7 @@ class _MarksEntryPageState extends State<MarksEntryPage> {
       },
     ),
   );
+
   void _message(String text, {bool error = false}) =>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -287,10 +313,12 @@ class _MarkRow extends StatelessWidget {
     required this.present,
     required this.onAttendance,
   });
+
   final Map<String, Object?> student;
   final TextEditingController mark;
   final bool present;
   final ValueChanged<bool> onAttendance;
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -315,8 +343,13 @@ class _MarkRow extends StatelessWidget {
 }
 
 class AnalyticsPanel extends StatelessWidget {
-  const AnalyticsPanel({super.key, required this.analytics});
+  const AnalyticsPanel({
+    super.key,
+    required this.analytics,
+  });
+
   final ExaminationAnalytics analytics;
+
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
@@ -345,19 +378,21 @@ class AnalyticsPanel extends StatelessWidget {
   );
 }
 
-class _ExamValues {
-  const _ExamValues({
+class ExamEditorValues {
+  const ExamEditorValues({
     required this.historyId,
     required this.name,
     required this.date,
     required this.totalMarks,
   });
+
   final int historyId;
-  final String name, date;
+  final String name;
+  final String date;
   final num totalMarks;
 }
 
-Future<_ExamValues?> showExamEditor(
+Future<ExamEditorValues?> showExamEditor(
   BuildContext context,
   List<Map<String, Object?>> histories,
 ) async {
@@ -367,7 +402,8 @@ Future<_ExamValues?> showExamEditor(
   );
   final total = TextEditingController(text: '100');
   int? historyId = histories.isEmpty ? null : histories.first['id']! as int;
-  final result = await showDialog<_ExamValues>(
+
+  final result = await showDialog<ExamEditorValues>(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
@@ -421,21 +457,29 @@ Future<_ExamValues?> showExamEditor(
             onPressed: () {
               final value = num.tryParse(total.text);
               final dateError = AppValidators.date(date.text, 'Examination date');
-              if (historyId != null &&
+              final selectedHistoryId = historyId;
+              if (selectedHistoryId != null &&
                   name.text.trim().isNotEmpty &&
                   dateError == null &&
-                  value != null)
+                  value != null) {
                 Navigator.pop(
                   context,
-                  _ExamValues(
-                    historyId: historyId!,
+                  ExamEditorValues(
+                    historyId: selectedHistoryId,
                     name: name.text.trim(),
                     date: date.text.trim(),
                     totalMarks: value,
                   ),
                 );
-              else
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(dateError ?? 'Enter an examination name and valid total marks.')));
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      dateError ?? 'Enter an examination name and valid total marks.',
+                    ),
+                  ),
+                );
+              }
             },
             child: const Text('Create'),
           ),
@@ -443,8 +487,10 @@ Future<_ExamValues?> showExamEditor(
       ),
     ),
   );
+
   name.dispose();
   date.dispose();
   total.dispose();
   return result;
 }
+

@@ -21,8 +21,12 @@ class AuthSession {
 }
 
 class AuthService {
-    AuthService({required this._database, UserRepository? users, PasswordHasher? passwordHasher})
-        : _users = users ?? UserRepository(),
+  AuthService({
+    required Database database,
+    UserRepository? users,
+    PasswordHasher? passwordHasher,
+  })  : _database = database,
+        _users = users ?? UserRepository(),
         _passwordHasher = passwordHasher ?? const PasswordHasher();
 
   final Database _database;

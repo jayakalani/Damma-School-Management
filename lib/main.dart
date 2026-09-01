@@ -10,10 +10,31 @@ Future<void> main() => bootstrap();
 
 Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (!kIsWeb) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+
+  if (kIsWeb) {
+    runApp(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'This app uses a native SQLite database and cannot run on the web browser. '
+                'Please run it on Windows, Android, or iOS.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return;
   }
+
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+
   final database = await DatabaseHelper().database;
   runApp(
     DammaSchoolApp(

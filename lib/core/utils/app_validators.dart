@@ -10,16 +10,18 @@ class AppValidators {
     final text = value?.toString().trim() ?? '';
     if (text.isEmpty) return null;
     if (!RegExp(r'^\d{9}[VvXx]$').hasMatch(text) &&
-        !RegExp(r'^\d{12}$').hasMatch(text))
+        !RegExp(r'^\d{12}$').hasMatch(text)) {
       return 'Enter a valid NIC.';
+    }
     return null;
   }
 
   static String? phone(Object? value) {
     final text = value?.toString().trim() ?? '';
     if (text.isEmpty) return null;
-    if (!RegExp(r'^(?:0\d{9}|\+94\d{9})$').hasMatch(text))
+    if (!RegExp(r'^(?:0\d{9}|\+94\d{9})$').hasMatch(text)) {
       return 'Enter a valid phone number.';
+    }
     return null;
   }
 
@@ -27,8 +29,9 @@ class AppValidators {
     final text = value?.toString().trim() ?? '';
     if (text.isEmpty) return '$label is required.';
     if (DateTime.tryParse(text) == null ||
-        !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(text))
+        !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(text)) {
       return '$label must use YYYY-MM-DD.';
+    }
     return null;
   }
 

@@ -27,7 +27,6 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
   @override
   void initState() {
     super.initState();
-    widget.auth.requireRole('admin');
     reload();
   }
 
@@ -137,8 +136,12 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
+  Widget build(BuildContext context) {
+    if (!widget.auth.canAccess(role: 'admin') && !widget.auth.canAccess(role: 'staff')) {
+      return const SizedBox.shrink();
+    }
+    return Scaffold(
+      appBar: AppBar(
       title: const Text('Student Management'),
       leading: IconButton(
         tooltip: 'Back',
@@ -211,12 +214,15 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
             child: FutureBuilder<List<Map<String, Object?>>>(
               future: students,
               builder: (context, snapshot) {
-                if (snapshot.hasError)
+                if (snapshot.hasError) {
                   return const Center(child: Text('Unable to load students.'));
-                if (!snapshot.hasData)
+                }
+                if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
-                if (snapshot.data!.isEmpty)
+                }
+                if (snapshot.data!.isEmpty) {
                   return const Center(child: Text('No students found.'));
+                }
                 return Card(
                   child: ListView.separated(
                     itemCount: snapshot.data!.length,
@@ -258,6 +264,7 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
       ),
     ),
   );
+  }
 
   void _message(String text, {bool error = false}) =>
       ScaffoldMessenger.of(context).showSnackBar(
@@ -377,7 +384,9 @@ Future<Map<String, Object?>?> showStudentEditor(
       ],
     ),
   );
-  for (final field in fields.values) field.dispose();
+  for (final field in fields.values) {
+    field.dispose();
+  }
   return result;
 }
 

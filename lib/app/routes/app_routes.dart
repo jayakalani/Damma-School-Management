@@ -42,56 +42,64 @@ class AppRoutes {
           builder: (_) => LoginPage(database: database, auth: auth),
         );
       case admin:
-        if (!auth.canAccess(role: 'admin'))
+        if (!auth.canAccess(role: 'admin')) {
           return _redirect(settings, database, auth);
+        }
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => AdminDashboard(auth: auth, database: database),
         );
       case staff:
-        if (!auth.canAccess(role: 'staff'))
+        if (!auth.canAccess(role: 'staff')) {
           return _redirect(settings, database, auth);
+        }
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => StaffDashboard(auth: auth),
         );
       case staffManagement:
-        if (!auth.canAccess(role: 'admin'))
+        if (!auth.canAccess(role: 'admin')) {
           return _redirect(settings, database, auth);
+        }
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => StaffManagementPage(database: database, auth: auth),
         );
       case teacherManagement:
-        if (!auth.canAccess(role: 'admin'))
+        if (!auth.canAccess(role: 'admin') && !auth.canAccess(role: 'staff')) {
           return _redirect(settings, database, auth);
+        }
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => TeacherManagementPage(database: database, auth: auth),
         );
       case batchManagement:
-        if (!auth.canAccess(role: 'admin'))
+        if (!auth.canAccess(role: 'admin') && !auth.canAccess(role: 'staff')) {
           return _redirect(settings, database, auth);
+        }
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => BatchManagementPage(database: database, auth: auth),
         );
       case studentManagement:
-        if (!auth.canAccess(role: 'admin'))
+        if (!auth.canAccess(role: 'admin') && !auth.canAccess(role: 'staff')) {
           return _redirect(settings, database, auth);
+        }
         return MaterialPageRoute(
           builder: (_) => StudentManagementPage(database: database, auth: auth),
         );
       case historicalPastPupils:
-        if (!auth.canAccess(role: 'admin'))
+        if (!auth.canAccess(role: 'admin') && !auth.canAccess(role: 'staff')) {
           return _redirect(settings, database, auth);
+        }
         return MaterialPageRoute(
           builder: (_) =>
               HistoricalPastPupilPage(database: database, auth: auth),
         );
       case examinationManagement:
-        if (!auth.canAccess(role: 'admin'))
+        if (!auth.canAccess(role: 'admin') && !auth.canAccess(role: 'staff')) {
           return _redirect(settings, database, auth);
+        }
         return MaterialPageRoute(
           builder: (_) =>
               ExaminationManagementPage(database: database, auth: auth),
@@ -106,8 +114,9 @@ class AppRoutes {
           ),
         );
       case auditLogs:
-        if (!auth.canAccess(role: 'admin'))
+        if (!auth.canAccess(role: 'admin')) {
           return _redirect(settings, database, auth);
+        }
         return MaterialPageRoute(
           builder: (_) => AuditLogsPage(database: database, auth: auth),
         );

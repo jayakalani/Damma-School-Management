@@ -82,15 +82,17 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                 'The selected backup passed validation. The current database will first be saved as a safety copy.',
               ) !=
               true ||
-          !mounted)
+          !mounted) {
         return;
+      }
       if (await _confirm(
                 'Final confirmation',
                 'This will replace the current database and restart the application. Continue?',
               ) !=
               true ||
-          !mounted)
+          !mounted) {
         return;
+      }
       await service.restoreDatabase(adminId: userId, sourcePath: file.path);
       await widget.onRestore?.call();
     } on InvalidBackupException catch (error) {

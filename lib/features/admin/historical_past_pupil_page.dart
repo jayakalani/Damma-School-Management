@@ -11,8 +11,10 @@ class HistoricalPastPupilPage extends StatefulWidget {
     required this.database,
     required this.auth,
   });
+
   final Database database;
   final AuthService auth;
+
   @override
   State<HistoricalPastPupilPage> createState() =>
       _HistoricalPastPupilPageState();
@@ -21,11 +23,12 @@ class HistoricalPastPupilPage extends StatefulWidget {
 class _HistoricalPastPupilPageState extends State<HistoricalPastPupilPage> {
   final repository = PastPupilRepository();
   late Future<List<Map<String, Object?>>> batches;
+
   int get adminId => widget.auth.currentSession!.userId;
+
   @override
   void initState() {
     super.initState();
-    widget.auth.requireRole('admin');
     reload();
   }
 
@@ -39,6 +42,7 @@ class _HistoricalPastPupilPageState extends State<HistoricalPastPupilPage> {
   Future<void> addBatch() async {
     final value = await showLegacyBatchEditor(context);
     if (value == null || !mounted) return;
+
     try {
       await repository.createBatch(
         database: widget.database,
@@ -57,6 +61,7 @@ class _HistoricalPastPupilPageState extends State<HistoricalPastPupilPage> {
   Future<void> addPupil(int batchId) async {
     final value = await showLegacyPupilEditor(context);
     if (value == null || !mounted) return;
+
     try {
       await repository.addPupil(
         database: widget.database,
@@ -72,68 +77,80 @@ class _HistoricalPastPupilPageState extends State<HistoricalPastPupilPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Historical Past Pupils'),
-      leading: IconButton(
-        tooltip: 'Back',
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => Navigator.pop(context),
+  Widget build(BuildContext context) {
+    if (!widget.auth.canAccess(role: 'admin') &&
+        !widget.auth.canAccess(role: 'staff')) {
+      return const SizedBox.shrink();
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Historical Past Pupils'),
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-    ),
-    body: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: addBatch,
-              icon: const Icon(Icons.add),
-              label: const Text('Create Legacy Batch'),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: addBatch,
+                icon: const Icon(Icons.add),
+                label: const Text('Create Legacy Batch'),
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: FutureBuilder<List<Map<String, Object?>>>(
-              future: batches,
-              builder: (context, snapshot) {
-                if (!snapshot.hasData)
-                  return Center(
-                    child: snapshot.hasError
-                        ? const Text('Unable to load legacy batches.')
-                        : const CircularProgressIndicator(),
-                  );
-                if (snapshot.data!.isEmpty)
-                  return const Center(
-                    child: Text('No legacy alumni batches found.'),
-                  );
-                return ListView(
-                  children: [
-                    for (final batch in snapshot.data!)
-                      Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.history_edu),
-                          title: Text(batch['batch_name']! as String),
-                          subtitle: Text(
-                            'Year completed: ${batch['year_completed']}',
-                          ),
-                          trailing: IconButton(
-                            tooltip: 'Add past pupil',
-                            onPressed: () => addPupil(batch['id']! as int),
-                            icon: const Icon(Icons.person_add_outlined),
+            const SizedBox(height: 12),
+            Expanded(
+              child: FutureBuilder<List<Map<String, Object?>>>(
+                future: batches,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return Center(
+                      child: snapshot.hasError
+                          ? const Text('Unable to load legacy batches.')
+                          : const CircularProgressIndicator(),
+                    );
+                  }
+
+                  if (snapshot.data!.isEmpty) {
+                    return const Center(
+                      child: Text('No legacy alumni batches found.'),
+                    );
+                  }
+
+                  return ListView(
+                    children: [
+                      for (final batch in snapshot.data!)
+                        Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.history_edu),
+                            title: Text(batch['batch_name']! as String),
+                            subtitle: Text(
+                              'Year completed: ${batch['year_completed']}',
+                            ),
+                            trailing: IconButton(
+                              tooltip: 'Add past pupil',
+                              onPressed: () => addPupil(batch['id']! as int),
+                              icon: const Icon(Icons.person_add_outlined),
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
+
   void _message(String text, {bool error = false}) =>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -143,17 +160,20 @@ class _HistoricalPastPupilPageState extends State<HistoricalPastPupilPage> {
       );
 }
 
-class _LegacyBatchValue {
-  const _LegacyBatchValue(this.name, this.year, this.notes);
-  final String name, notes;
+class LegacyBatchEditorValues {
+  const LegacyBatchEditorValues(this.name, this.year, this.notes);
+
+  final String name;
   final int year;
+  final String notes;
 }
 
-Future<_LegacyBatchValue?> showLegacyBatchEditor(BuildContext context) async {
+Future<LegacyBatchEditorValues?> showLegacyBatchEditor(BuildContext context) async {
   final name = TextEditingController();
   final year = TextEditingController(text: DateTime.now().year.toString());
   final notes = TextEditingController();
-  final result = await showDialog<_LegacyBatchValue>(
+
+  final result = await showDialog<LegacyBatchEditorValues>(
     context: context,
     builder: (context) => AlertDialog(
       title: const Text('Create Legacy Batch'),
@@ -183,17 +203,19 @@ Future<_LegacyBatchValue?> showLegacyBatchEditor(BuildContext context) async {
         FilledButton(
           onPressed: () {
             final value = int.tryParse(year.text);
-            if (name.text.trim().isNotEmpty && value != null)
+            if (name.text.trim().isNotEmpty && value != null) {
               Navigator.pop(
                 context,
-                _LegacyBatchValue(name.text.trim(), value, notes.text.trim()),
+                LegacyBatchEditorValues(name.text.trim(), value, notes.text.trim()),
               );
+            }
           },
           child: const Text('Create'),
         ),
       ],
     ),
   );
+
   name.dispose();
   year.dispose();
   notes.dispose();
@@ -213,6 +235,7 @@ Future<Map<String, Object?>?> showLegacyPupilEditor(
     'notes',
   ];
   final fields = {for (final key in keys) key: TextEditingController()};
+
   final result = await showDialog<Map<String, Object?>>(
     context: context,
     builder: (context) => AlertDialog(
@@ -238,19 +261,27 @@ Future<Map<String, Object?>?> showLegacyPupilEditor(
         ),
         FilledButton(
           onPressed: () {
-            if (fields['full_name']!.text.trim().isNotEmpty)
-            {
-              final message = AppValidators.nic(fields['nic']!.text) ?? AppValidators.phone(fields['phone_number']!.text) ?? AppValidators.optionalDate(fields['date_of_birth']!.text);
+            if (fields['full_name']!.text.trim().isNotEmpty) {
+              final message =
+                  AppValidators.nic(fields['nic']!.text) ??
+                  AppValidators.phone(fields['phone_number']!.text) ??
+                  AppValidators.optionalDate(fields['date_of_birth']!.text);
+
               if (message != null) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(message)),
+                );
                 return;
               }
+
               Navigator.pop(context, {
                 for (final entry in fields.entries)
                   entry.key: entry.value.text.trim(),
               });
             } else {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Full name is required.')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Full name is required.')),
+              );
             }
           },
           child: const Text('Save'),
@@ -258,7 +289,11 @@ Future<Map<String, Object?>?> showLegacyPupilEditor(
       ],
     ),
   );
-  for (final field in fields.values) field.dispose();
+
+  for (final field in fields.values) {
+    field.dispose();
+  }
+
   return result;
 }
 
@@ -266,3 +301,4 @@ String _studentLabel(String key) => key
     .split('_')
     .map((part) => part[0].toUpperCase() + part.substring(1))
     .join(' ');
+

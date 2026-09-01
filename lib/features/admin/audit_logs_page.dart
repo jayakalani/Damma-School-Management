@@ -75,11 +75,12 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
       lastDate: DateTime(2200),
       initialDate: startDate ?? DateTime.now(),
     );
-    if (value != null)
+    if (value != null) {
       setState(() {
         startDate = value;
         reload();
       });
+    }
   }
 
   Future<void> chooseEnd() async {
@@ -89,11 +90,12 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
       lastDate: DateTime(2200),
       initialDate: endDate ?? DateTime.now(),
     );
-    if (value != null)
+    if (value != null) {
       setState(() {
         endDate = value;
         reload();
       });
+    }
   }
 
   @override
@@ -206,7 +208,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
               child: FutureBuilder<List<Map<String, Object?>>>(
                 future: logs,
                 builder: (context, snapshot) {
-                  if (snapshot.hasError)
+                  if (snapshot.hasError) {
                     return _StateMessage(
                       icon: Icons.error_outline,
                       text: 'Unable to load audit logs.',
@@ -216,13 +218,16 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
                         label: const Text('Retry'),
                       ),
                     );
-                  if (!snapshot.hasData)
+                  }
+                  if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
-                  if (snapshot.data!.isEmpty)
+                  }
+                  if (snapshot.data!.isEmpty) {
                     return const _StateMessage(
                       icon: Icons.fact_check_outlined,
                       text: 'No audit logs match the current filters.',
                     );
+                  }
                   return Card(
                     child: Scrollbar(
                       child: SingleChildScrollView(

@@ -124,8 +124,9 @@ class TeacherRepository {
             null ||
         AppValidators.nic(details['nic']) != null ||
         AppValidators.phone(details['phone_number']) != null ||
-        AppValidators.optionalDate(details['date_of_birth']) != null)
+        AppValidators.optionalDate(details['date_of_birth']) != null) {
       throw StateError('Teacher details are invalid.');
+    }
   }
 
   Future<void> setTeacherStatus({
@@ -226,8 +227,9 @@ class TeacherRepository {
       whereArgs: [adminId, 'admin', 'active'],
       limit: 1,
     );
-    if (rows.isEmpty)
+    if (rows.isEmpty) {
       throw StateError('Only an active admin can manage teachers.');
+    }
   }
 
   Future<void> _requireTeacher(DatabaseExecutor database, int teacherId) async {

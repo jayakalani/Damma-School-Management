@@ -188,13 +188,15 @@ class StudentRepository {
   void _validate(Map<String, Object?> details) {
     if ((details['full_name']?.toString().trim() ?? '').isEmpty ||
         (details['name_with_initials']?.toString().trim() ?? '').isEmpty ||
-        (details['joined_date']?.toString().trim() ?? '').isEmpty)
+        (details['joined_date']?.toString().trim() ?? '').isEmpty) {
       throw const InvalidStudentException();
+    }
     if (AppValidators.nic(details['nic']) != null ||
         AppValidators.phone(details['phone_number']) != null ||
         AppValidators.optionalDate(details['date_of_birth']) != null ||
-        AppValidators.date(details['joined_date'], 'Joined date') != null)
+        AppValidators.date(details['joined_date'], 'Joined date') != null) {
       throw const InvalidStudentException();
+    }
   }
 
   Future<void> _requireAdmin(DatabaseExecutor database, int adminId) async {
@@ -205,8 +207,9 @@ class StudentRepository {
       whereArgs: [adminId, 'admin', 'active'],
       limit: 1,
     );
-    if (rows.isEmpty)
+    if (rows.isEmpty) {
       throw StateError('Only an active admin can manage students.');
+    }
   }
 
   Future<void> _requireStudent(DatabaseExecutor database, int studentId) async {

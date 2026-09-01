@@ -122,21 +122,3 @@ class _LogoutButton extends StatelessWidget {
     },
   );
 }
-
-class _PlaceholderList extends StatelessWidget {
-  const _PlaceholderList({required this.items});
-  final List<String> items;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      for (final item in items)
-        ListTile(
-          enabled: false,
-          leading: const Icon(Icons.arrow_forward_ios, size: 16),
-          title: Text(item),
-          subtitle: const Text('Coming in a later module'),
-        ),
-    ],
-  );
-}

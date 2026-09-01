@@ -71,8 +71,9 @@ class ExaminationRepository {
   }) async {
     if (name.trim().isEmpty ||
         AppValidators.date(date, 'Examination date') != null ||
-        totalMarks < 0)
+        totalMarks < 0) {
       throw const InvalidExaminationException();
+    }
     return database.transaction((transaction) async {
       await _requireAdmin(transaction, adminId);
       final histories = await transaction.query(
@@ -130,18 +131,22 @@ class ExaminationRepository {
       final rosterIds = roster.map((row) => row['student_id']! as int).toSet();
       final now = _now();
       for (final result in results) {
-        if (!rosterIds.contains(result.studentId))
+        if (!rosterIds.contains(result.studentId)) {
           throw StateError('Student is not in this batch academic year.');
+        }
         if (result.attendanceStatus != 'present' &&
-            result.attendanceStatus != 'absent')
+            result.attendanceStatus != 'absent') {
           throw const InvalidExamResultException();
-        if (result.attendanceStatus == 'absent' && result.marks != null)
+        }
+        if (result.attendanceStatus == 'absent' && result.marks != null) {
           throw const InvalidExamResultException();
+        }
         if (result.attendanceStatus == 'present' &&
             (result.marks == null ||
                 result.marks! < 0 ||
-                result.marks! > (exam['total_marks']! as num)))
+                result.marks! > (exam['total_marks']! as num))) {
           throw const InvalidExamResultException();
+        }
         final values = {
           'examination_id': examinationId,
           'student_id': result.studentId,
@@ -157,9 +162,9 @@ class ExaminationRepository {
           whereArgs: [examinationId, result.studentId],
           limit: 1,
         );
-        if (existing.isEmpty)
+        if (existing.isEmpty) {
           await transaction.insert('exam_results', values);
-        else
+        } else {
           await transaction.update(
             'exam_results',
             {
@@ -170,6 +175,7 @@ class ExaminationRepository {
             where: 'id = ?',
             whereArgs: [existing.single['id']],
           );
+        }
       }
       await _auditLogs.record(
         database: transaction,
@@ -232,8 +238,9 @@ class ExaminationRepository {
       whereArgs: [adminId, 'admin', 'active'],
       limit: 1,
     );
-    if (rows.isEmpty)
+    if (rows.isEmpty) {
       throw StateError('Only an active admin can manage examinations.');
+    }
   }
 }
 

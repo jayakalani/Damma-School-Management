@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.13.1
+  sdk: ^3.5.0  # Upgraded from 3.13.1 to latest stable Dart 3.5+
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -49,6 +49,15 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  
+  # Mocking library for unit and widget tests
+  mocktail: ^1.0.0
+  
+  # Code generation - required for json_serializable
+  build_runner: ^2.4.0
+  
+  # JSON serialization for model code generation
+  json_serializable: ^6.7.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

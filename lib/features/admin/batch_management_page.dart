@@ -11,8 +11,10 @@ class BatchManagementPage extends StatefulWidget {
     required this.database,
     required this.auth,
   });
+
   final Database database;
   final AuthService auth;
+
   @override
   State<BatchManagementPage> createState() => _BatchManagementPageState();
 }
@@ -21,12 +23,12 @@ class _BatchManagementPageState extends State<BatchManagementPage> {
   final search = TextEditingController();
   final repository = BatchRepository();
   late Future<List<Map<String, Object?>>> batches;
+
   int get adminId => widget.auth.currentSession!.userId;
 
   @override
   void initState() {
     super.initState();
-    widget.auth.requireRole('admin');
     reload();
   }
 
@@ -49,6 +51,7 @@ class _BatchManagementPageState extends State<BatchManagementPage> {
   Future<void> addBatch() async {
     final values = await showBatchEditor(context);
     if (values == null || !mounted) return;
+
     try {
       await repository.createBatch(
         database: widget.database,
@@ -65,101 +68,112 @@ class _BatchManagementPageState extends State<BatchManagementPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Batch Management'),
-      leading: IconButton(
-        tooltip: 'Back',
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => Navigator.pop(context),
+  Widget build(BuildContext context) {
+    if (!widget.auth.canAccess(role: 'admin') &&
+        !widget.auth.canAccess(role: 'staff')) {
+      return const SizedBox.shrink();
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Batch Management'),
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-    ),
-    body: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) => Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                SizedBox(
-                  width: constraints.maxWidth < 720
-                      ? constraints.maxWidth
-                      : 320,
-                  child: TextField(
-                    controller: search,
-                    onChanged: (_) => refreshList(),
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      labelText: 'Search batches',
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            LayoutBuilder(
+              builder: (context, constraints) => Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  SizedBox(
+                    width: constraints.maxWidth < 720
+                        ? constraints.maxWidth
+                        : 320,
+                    child: TextField(
+                      controller: search,
+                      onChanged: (_) => refreshList(),
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        labelText: 'Search batches',
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                IconButton(
-                  tooltip: 'Refresh',
-                  onPressed: refreshList,
-                  icon: const Icon(Icons.refresh),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: addBatch,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Create Batch'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: FutureBuilder<List<Map<String, Object?>>>(
-              future: batches,
-              builder: (context, snapshot) {
-                if (snapshot.hasError)
-                  return const Center(child: Text('Unable to load batches.'));
-                if (!snapshot.hasData)
-                  return const Center(child: CircularProgressIndicator());
-                if (snapshot.data!.isEmpty)
-                  return const Center(child: Text('No batches found.'));
-                return Card(
-                  child: ListView.separated(
-                    itemCount: snapshot.data!.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final batch = snapshot.data![index];
-                      return ListTile(
-                        leading: const Icon(Icons.groups_outlined),
-                        title: Text(batch['batch_name']! as String),
-                        subtitle: Text(
-                          'Starting ${batch['starting_year']} | Current: ${batch['academic_year'] ?? '-'} - Grade ${batch['grade'] ?? '-'}',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => BatchDetailsPage(
-                                database: widget.database,
-                                auth: widget.auth,
-                                batchId: batch['id']! as int,
-                              ),
-                            ),
-                          );
-                          refreshList();
-                        },
-                      );
-                    },
+                  const SizedBox(width: 12),
+                  IconButton(
+                    tooltip: 'Refresh',
+                    onPressed: refreshList,
+                    icon: const Icon(Icons.refresh),
                   ),
-                );
-              },
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: addBatch,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Create Batch'),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Expanded(
+              child: FutureBuilder<List<Map<String, Object?>>>(
+                future: batches,
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Center(child: Text('Unable to load batches.'));
+                  }
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.data!.isEmpty) {
+                    return const Center(child: Text('No batches found.'));
+                  }
+
+                  return Card(
+                    child: ListView.separated(
+                      itemCount: snapshot.data!.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final batch = snapshot.data![index];
+                        return ListTile(
+                          leading: const Icon(Icons.groups_outlined),
+                          title: Text(batch['batch_name']! as String),
+                          subtitle: Text(
+                            'Starting ${batch['starting_year']} | Current: ${batch['academic_year'] ?? '-'} - Grade ${batch['grade'] ?? '-'}',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => BatchDetailsPage(
+                                  database: widget.database,
+                                  auth: widget.auth,
+                                  batchId: batch['id']! as int,
+                                ),
+                              ),
+                            );
+                            refreshList();
+                          },
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   void _message(String text, {bool error = false}) =>
       ScaffoldMessenger.of(context).showSnackBar(
@@ -177,9 +191,11 @@ class BatchDetailsPage extends StatefulWidget {
     required this.auth,
     required this.batchId,
   });
+
   final Database database;
   final AuthService auth;
   final int batchId;
+
   @override
   State<BatchDetailsPage> createState() => _BatchDetailsPageState();
 }
@@ -188,7 +204,9 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
   final repository = BatchRepository();
   final teacherRepository = TeacherRepository();
   late Future<BatchDetails> details;
+
   int get adminId => widget.auth.currentSession!.userId;
+
   @override
   void initState() {
     super.initState();
@@ -218,6 +236,7 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
       grade: current['grade']! as String,
     );
     if (values == null || !mounted) return;
+
     try {
       await repository.promoteBatch(
         database: widget.database,
@@ -240,8 +259,10 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
       status: 'active',
     );
     if (!mounted) return;
+
     final teacherId = await showTeacherPicker(context, teachers);
     if (teacherId == null || !mounted) return;
+
     try {
       await repository.assignClassTeacher(
         database: widget.database,
@@ -262,8 +283,10 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
       adminId: adminId,
     );
     if (!mounted) return;
+
     final studentId = await showStudentPicker(context, students);
     if (studentId == null || !mounted) return;
+
     try {
       await repository.addStudentToBatch(
         database: widget.database,
@@ -286,17 +309,20 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
     body: FutureBuilder<BatchDetails>(
       future: details,
       builder: (context, snapshot) {
-        if (!snapshot.hasData)
+        if (!snapshot.hasData) {
           return Center(
             child: snapshot.hasError
                 ? const Text('Unable to load batch details.')
                 : const CircularProgressIndicator(),
           );
+        }
+
         final data = snapshot.data!;
         final current = data.history.lastWhere(
           (row) => row['is_current'] == 1,
           orElse: () => data.history.last,
         );
+
         return ListView(
           padding: const EdgeInsets.all(24),
           children: [
@@ -411,6 +437,7 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
       },
     ),
   );
+
   void _message(String text, {bool error = false}) =>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -422,8 +449,10 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
 
 class _Section extends StatelessWidget {
   const _Section({required this.title, required this.children});
+
   final String title;
   final List<Widget> children;
+
   @override
   Widget build(BuildContext context) => Card(
     margin: const EdgeInsets.only(bottom: 16),
@@ -440,17 +469,20 @@ class _Section extends StatelessWidget {
   );
 }
 
-class _BatchValues {
-  const _BatchValues(this.name, this.year, this.grade);
-  final String name, grade;
+class BatchEditorValues {
+  const BatchEditorValues(this.name, this.year, this.grade);
+
+  final String name;
   final int year;
+  final String grade;
 }
 
-Future<_BatchValues?> showBatchEditor(BuildContext context) async {
+Future<BatchEditorValues?> showBatchEditor(BuildContext context) async {
   final name = TextEditingController();
   final year = TextEditingController(text: DateTime.now().year.toString());
   final grade = TextEditingController();
-  final result = await showDialog<_BatchValues>(
+
+  final result = await showDialog<BatchEditorValues>(
     context: context,
     builder: (context) => AlertDialog(
       title: const Text('Create Batch'),
@@ -482,31 +514,34 @@ Future<_BatchValues?> showBatchEditor(BuildContext context) async {
             final value = int.tryParse(year.text);
             if (name.text.trim().isNotEmpty &&
                 value != null &&
-                grade.text.trim().isNotEmpty)
+                grade.text.trim().isNotEmpty) {
               Navigator.pop(
                 context,
-                _BatchValues(name.text.trim(), value, grade.text.trim()),
+                BatchEditorValues(name.text.trim(), value, grade.text.trim()),
               );
+            }
           },
           child: const Text('Create'),
         ),
       ],
     ),
   );
+
   name.dispose();
   year.dispose();
   grade.dispose();
   return result;
 }
 
-Future<_BatchValues?> showPromotionEditor(
+Future<BatchEditorValues?> showPromotionEditor(
   BuildContext context, {
   required int year,
   required String grade,
 }) async {
   final yearController = TextEditingController(text: year.toString());
   final gradeController = TextEditingController(text: grade);
-  final result = await showDialog<_BatchValues>(
+
+  final result = await showDialog<BatchEditorValues>(
     context: context,
     builder: (context) => AlertDialog(
       title: const Text('Promote Batch'),
@@ -532,17 +567,19 @@ Future<_BatchValues?> showPromotionEditor(
         FilledButton(
           onPressed: () {
             final value = int.tryParse(yearController.text);
-            if (value != null && gradeController.text.trim().isNotEmpty)
+            if (value != null && gradeController.text.trim().isNotEmpty) {
               Navigator.pop(
                 context,
-                _BatchValues('', value, gradeController.text.trim()),
+                BatchEditorValues('', value, gradeController.text.trim()),
               );
+            }
           },
           child: const Text('Promote'),
         ),
       ],
     ),
   );
+
   yearController.dispose();
   gradeController.dispose();
   return result;
@@ -613,3 +650,4 @@ Future<int?> showStudentPicker(
     ),
   );
 }
+

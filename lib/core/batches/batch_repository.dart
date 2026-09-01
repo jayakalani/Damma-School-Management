@@ -129,8 +129,9 @@ class BatchRepository {
         whereArgs: [history['id']],
         limit: 1,
       );
-      if (current.isNotEmpty && current.single['teacher_id'] == teacherId)
+      if (current.isNotEmpty && current.single['teacher_id'] == teacherId) {
         return;
+      }
       if (current.isNotEmpty) {
         await transaction.update(
           'batch_teacher_history',
@@ -185,8 +186,9 @@ class BatchRepository {
       );
       if (current.isNotEmpty &&
           current.single['batch_id'] == batchId &&
-          current.single['batch_history_id'] == history['id'])
+          current.single['batch_history_id'] == history['id']) {
         throw const StudentAlreadyInBatchException();
+      }
       final now = DateTime.now().toUtc().toIso8601String();
       if (current.isNotEmpty) {
         await transaction.update(
@@ -272,8 +274,9 @@ class BatchRepository {
         whereArgs: [batchId],
         limit: 1,
       );
-      if (currentRows.isEmpty)
+      if (currentRows.isEmpty) {
         throw StateError('Batch has no current history.');
+      }
       final batchRows = await transaction.query(
         'batches',
         columns: ['batch_name'],
@@ -319,8 +322,9 @@ class BatchRepository {
   }
 
   void _validate(String name, int year, String grade) {
-    if (name.trim().isEmpty || grade.trim().isEmpty || year < 1)
+    if (name.trim().isEmpty || grade.trim().isEmpty || year < 1) {
       throw const InvalidBatchException();
+    }
   }
 
   Future<Map<String, Object?>> _currentHistory(
@@ -345,8 +349,9 @@ class BatchRepository {
       whereArgs: [adminId, 'admin', 'active'],
       limit: 1,
     );
-    if (rows.isEmpty)
+    if (rows.isEmpty) {
       throw StateError('Only an active admin can manage batches.');
+    }
   }
 }
 

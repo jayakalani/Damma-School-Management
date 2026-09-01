@@ -24,10 +24,11 @@ class BackupService {
   }) async {
     await _requireActiveUser(adminId);
     final source = await databasePath();
-    if (source == null || !File(source).existsSync())
+    if (source == null || !File(source).existsSync()) {
       throw const InvalidBackupException(
         'The live database file was not found.',
       );
+    }
     await database.rawQuery('PRAGMA wal_checkpoint(FULL)');
     final destination = Directory(destinationFolder);
     if (!destination.existsSync()) await destination.create(recursive: true);
@@ -49,18 +50,20 @@ class BackupService {
 
   Future<void> validateBackup(String sourcePath) async {
     final file = File(sourcePath);
-    if (!file.existsSync())
+    if (!file.existsSync()) {
       throw const InvalidBackupException(
         'The selected backup file does not exist.',
       );
+    }
     final candidate = await databaseFactoryFfi.openDatabase(
       sourcePath,
       options: OpenDatabaseOptions(readOnly: true),
     );
     try {
       final integrity = await candidate.rawQuery('PRAGMA integrity_check');
-      if (integrity.single.values.single != 'ok')
+      if (integrity.single.values.single != 'ok') {
         throw const InvalidBackupException('SQLite integrity check failed.');
+      }
       final tables = await candidate.rawQuery(
         "SELECT name FROM sqlite_master WHERE type = 'table'",
       );
@@ -76,20 +79,22 @@ class BackupService {
         'examinations',
         'exam_results',
       ];
-      if (!required.every(names.contains))
+      if (!required.every(names.contains)) {
         throw const InvalidBackupException(
           'The backup is missing required application tables.',
         );
+      }
       final admin = await candidate.query(
         'users',
         where: 'role = ?',
         whereArgs: ['admin'],
         limit: 1,
       );
-      if (admin.isEmpty)
+      if (admin.isEmpty) {
         throw const InvalidBackupException(
           'The backup contains no administrator account.',
         );
+      }
     } finally {
       await candidate.close();
     }
@@ -102,10 +107,11 @@ class BackupService {
     await _requireActiveAdmin(adminId);
     await validateBackup(sourcePath);
     final livePath = await databasePath();
-    if (livePath == null)
+    if (livePath == null) {
       throw const InvalidBackupException(
         'The live database path is unavailable.',
       );
+    }
     final safetyPath =
         '${livePath.substring(0, livePath.length - 3)}pre_restore_${_stamp(DateTime.now().toUtc())}.db';
     await database.rawQuery('PRAGMA wal_checkpoint(FULL)');
@@ -131,8 +137,9 @@ class BackupService {
       whereArgs: [userId, 'active'],
       limit: 1,
     );
-    if (rows.isEmpty)
+    if (rows.isEmpty) {
       throw StateError('Only an active user can create backups.');
+    }
   }
 
   Future<void> _requireActiveAdmin(int userId) async {
@@ -143,8 +150,9 @@ class BackupService {
       whereArgs: [userId, 'admin', 'active'],
       limit: 1,
     );
-    if (rows.isEmpty)
+    if (rows.isEmpty) {
       throw StateError('Only an active admin can restore the database.');
+    }
   }
 
   String _stamp(DateTime value) => value

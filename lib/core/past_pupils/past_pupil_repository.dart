@@ -41,8 +41,9 @@ class PastPupilRepository {
     required int year,
     String? notes,
   }) async {
-    if (name.trim().isEmpty || year < 1)
+    if (name.trim().isEmpty || year < 1) {
       throw const InvalidPastPupilBatchException();
+    }
     return database.transaction((transaction) async {
       await _requireAdmin(transaction, adminId);
       final now = DateTime.now().toUtc().toIso8601String();
@@ -72,12 +73,14 @@ class PastPupilRepository {
     required int batchId,
     required Map<String, Object?> details,
   }) async {
-    if ((details['full_name']?.toString().trim() ?? '').isEmpty)
+    if ((details['full_name']?.toString().trim() ?? '').isEmpty) {
       throw const InvalidPastPupilException();
+    }
     if (AppValidators.nic(details['nic']) != null ||
         AppValidators.phone(details['phone_number']) != null ||
-        AppValidators.optionalDate(details['date_of_birth']) != null)
+        AppValidators.optionalDate(details['date_of_birth']) != null) {
       throw const InvalidPastPupilException();
+    }
     return database.transaction((transaction) async {
       await _requireAdmin(transaction, adminId);
       final batches = await transaction.query(
@@ -117,8 +120,9 @@ class PastPupilRepository {
       whereArgs: [adminId, 'admin', 'active'],
       limit: 1,
     );
-    if (rows.isEmpty)
+    if (rows.isEmpty) {
       throw StateError('Only an active admin can manage past pupils.');
+    }
   }
 }
 

@@ -30,7 +30,6 @@ class _TeacherManagementPageState extends State<TeacherManagementPage> {
   @override
   void initState() {
     super.initState();
-    widget.auth.requireRole('admin');
     reload();
   }
 
@@ -142,7 +141,9 @@ class _TeacherManagementPageState extends State<TeacherManagementPage> {
 
   @override
   Widget build(BuildContext context) {
-    widget.auth.requireRole('admin');
+    if (!widget.auth.canAccess(role: 'admin') && !widget.auth.canAccess(role: 'staff')) {
+      return const SizedBox.shrink();
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('Teachers'),
@@ -215,14 +216,17 @@ class _TeacherManagementPageState extends State<TeacherManagementPage> {
               child: FutureBuilder<List<Map<String, Object?>>>(
                 future: teachers,
                 builder: (context, snapshot) {
-                  if (snapshot.hasError)
+                  if (snapshot.hasError) {
                     return const Center(
                       child: Text('Unable to load teachers.'),
                     );
-                  if (!snapshot.hasData)
+                  }
+                  if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
-                  if (snapshot.data!.isEmpty)
+                  }
+                  if (snapshot.data!.isEmpty) {
                     return const Center(child: Text('No teachers found.'));
+                  }
                   return Card(
                     child: ListView.separated(
                       padding: const EdgeInsets.all(8),
@@ -446,8 +450,12 @@ Future<TeacherEditorValues?> showTeacherEditor(
       ),
     ),
   );
-  for (final controller in fields.values) controller.dispose();
-  for (final draft in drafts) draft.dispose();
+  for (final controller in fields.values) {
+    controller.dispose();
+  }
+  for (final draft in drafts) {
+    draft.dispose();
+  }
   return result;
 }
 
