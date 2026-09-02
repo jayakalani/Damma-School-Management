@@ -6,6 +6,18 @@ import 'package:damma_school_management_system/core/database/app_database.dart';
 import 'package:damma_school_management_system/core/examinations/examination_repository.dart';
 import 'package:damma_school_management_system/core/users/user_repository.dart';
 
+import 'package:damma_school_management_system/core/users/user_repository.dart';
+
+Future<int> _createStaff(Database connection, int adminId) {
+  return UserRepository().createStaff(
+    database: connection,
+    adminId: adminId,
+    fullName: 'Staff User',
+    username: 'staff.exam.${DateTime.now().microsecondsSinceEpoch}',
+    password: 'StaffPassword123!',
+  );
+}
+
 void main() {
   test(
     'records marks and calculates aggregates and tied rankings dynamically',
@@ -14,11 +26,12 @@ void main() {
       final database = AppDatabase(factory: databaseFactoryFfi);
       final connection = await database.openAt(inMemoryDatabasePath);
       final adminId = (await connection.query('users')).single['id']! as int;
+      final staffId = await _createStaff(connection, adminId);
       final batches = BatchRepository();
       final examinations = ExaminationRepository();
       await batches.createBatch(
         database: connection,
-        adminId: adminId,
+        adminId: staffId,
         name: 'Exam Batch',
         startingYear: 2026,
         startingGrade: 'Grade 1',
@@ -46,7 +59,7 @@ void main() {
       }
       final examId = await examinations.createExamination(
         database: connection,
-        adminId: adminId,
+        adminId: staffId,
         batchHistoryId: historyId,
         name: 'Term 1',
         date: '2026-03-01',
@@ -125,7 +138,7 @@ void main() {
 
     await batches.createBatch(
       database: connection,
-      adminId: adminId,
+      adminId: staffId,
       name: 'Staff Exam Batch',
       startingYear: 2026,
       startingGrade: 'Grade 1',

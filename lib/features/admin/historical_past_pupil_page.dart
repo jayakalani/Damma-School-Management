@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../app/widgets/date_picker_field.dart';
+import '../../app/widgets/glass_admin_ui.dart';
 
 import '../../core/past_pupils/past_pupil_repository.dart';
 import '../../core/services/auth_service.dart';
@@ -85,70 +86,149 @@ class _HistoricalPastPupilPageState extends State<HistoricalPastPupilPage> {
       return const SizedBox.shrink();
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Historical Past Pupils'),
-        leading: IconButton(
-          tooltip: 'Back',
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    final currentYear = DateTime.now().year;
+
+    return GlassAdminPage(
+      title: 'Historical Past Pupils',
+      subtitle: 'Manage legacy alumni batches and records',
+      toolbar: GlassToolbarButton(
+        label: 'Create Legacy Batch',
+        icon: Icons.add_rounded,
+        accent: accent,
+        onPressed: addBatch,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: addBatch,
-                icon: const Icon(Icons.add),
-                label: const Text('Create Legacy Batch'),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: FutureBuilder<List<Map<String, Object?>>>(
-                future: batches,
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return Center(
-                      child: snapshot.hasError
-                          ? const Text('Unable to load legacy batches.')
-                          : const CircularProgressIndicator(),
-                    );
-                  }
+      body: FutureBuilder<List<Map<String, Object?>>>(
+        future: batches,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return Center(
+              child: snapshot.hasError
+                  ? const Text('Unable to load legacy batches.')
+                  : const CircularProgressIndicator(),
+            );
+          }
 
-                  if (snapshot.data!.isEmpty) {
-                    return const Center(
-                      child: Text('No legacy alumni batches found.'),
-                    );
-                  }
+          final allBatches = snapshot.data!;
+          final recentCount = allBatches
+              .where((b) => b['year_completed'] == currentYear)
+              .length;
+          final withNotes = allBatches
+              .where((b) => (b['notes'] as String?)?.isNotEmpty == true)
+              .length;
 
-                  return ListView(
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                glassSummaryGrid(
+                  context: context,
+                  accent: accent,
+                  cards: [
+                    GlassSummaryStatCard(
+                      label: 'Total Batches',
+                      value: '${allBatches.length}',
+                      valueColor: theme.colorScheme.onSurface,
+                      accentColor: accent,
+                    ),
+                    GlassSummaryStatCard(
+                      label: 'Completed This Year',
+                      value: '$recentCount',
+                      valueColor: const Color(0xFF2563EB),
+                      accentColor: const Color(0xFF2563EB),
+                    ),
+                    GlassSummaryStatCard(
+                      label: 'With Notes',
+                      value: '$withNotes',
+                      valueColor: const Color(0xFF7C3AED),
+                      accentColor: const Color(0xFF7C3AED),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                GlassPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (final batch in snapshot.data!)
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.history_edu),
-                            title: Text(batch['batch_name']! as String),
-                            subtitle: Text(
-                              'Year completed: ${batch['year_completed']}',
-                            ),
-                            trailing: IconButton(
-                              tooltip: 'Add past pupil',
-                              onPressed: () => addPupil(batch['id']! as int),
-                              icon: const Icon(Icons.person_add_outlined),
+                      GlassDirectoryHeader(
+                        title: 'Legacy Batch Directory',
+                        icon: Icons.history_edu,
+                        countLabel: '${allBatches.length} shown',
+                      ),
+                      const SizedBox(height: 16),
+                      if (allBatches.isEmpty)
+                        const GlassEmptyState(
+                          icon: Icons.history_edu,
+                          message: 'No legacy alumni batches found.',
+                        )
+                      else ...[
+                        const GlassTableHeader(
+                          columns: [
+                            'ID',
+                            'BATCH NAME',
+                            'YEAR COMPLETED',
+                            'ACTIONS',
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        for (final batch in allBatches)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: GlassListRow(
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    flex: 1,
+                                    child: Text(
+                                      '#${batch['id']}',
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      batch['batch_name']! as String,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      '${batch['year_completed']}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: GlassActionChipButton(
+                                      label: 'Add Pupil',
+                                      color: accent,
+                                      onPressed: () =>
+                                          addPupil(batch['id']! as int),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
+                      ],
                     ],
-                  );
-                },
-              ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

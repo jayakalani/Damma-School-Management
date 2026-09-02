@@ -88,10 +88,10 @@ class ExaminationRepository {
       throw const InvalidExaminationException();
     }
     return database.transaction((transaction) async {
-      await AccessControl.requireActiveAdminOrStaff(
+      await AccessControl.requireActiveStaff(
         transaction,
         adminId,
-        action: 'manage examinations',
+        action: 'create examinations',
       );
       final histories = await transaction.query(
         'batch_history',

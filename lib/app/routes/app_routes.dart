@@ -74,7 +74,7 @@ class AppRoutes {
           builder: (_) => TeacherManagementPage(database: database, auth: auth),
         );
       case batchManagement:
-        if (!auth.canAccess(role: 'admin') && !auth.canAccess(role: 'staff')) {
+        if (!auth.canAccess(role: 'staff')) {
           return _redirect(settings, database, auth);
         }
         return MaterialPageRoute(
@@ -82,7 +82,7 @@ class AppRoutes {
           builder: (_) => BatchManagementPage(database: database, auth: auth),
         );
       case studentManagement:
-        if (!auth.canAccess(role: 'admin') && !auth.canAccess(role: 'staff')) {
+        if (!auth.canAccess(role: 'staff')) {
           return _redirect(settings, database, auth);
         }
         return MaterialPageRoute(
@@ -97,7 +97,7 @@ class AppRoutes {
               HistoricalPastPupilPage(database: database, auth: auth),
         );
       case examinationManagement:
-        if (!auth.canAccess(role: 'admin') && !auth.canAccess(role: 'staff')) {
+        if (!auth.canAccess(role: 'staff')) {
           return _redirect(settings, database, auth);
         }
         return MaterialPageRoute(
@@ -131,12 +131,21 @@ class AppRoutes {
     AuthService auth,
   ) {
     final session = auth.currentSession;
-    final destination = session?.isAdmin == true ? admin : login;
+    if (session?.isAdmin == true) {
+      return MaterialPageRoute(
+        settings: settings,
+        builder: (_) => AdminDashboard(auth: auth, database: database),
+      );
+    }
+    if (session?.isStaff == true) {
+      return MaterialPageRoute(
+        settings: settings,
+        builder: (_) => StaffDashboard(auth: auth, database: database),
+      );
+    }
     return MaterialPageRoute(
       settings: settings,
-      builder: (_) => destination == admin
-          ? AdminDashboard(auth: auth, database: database)
-          : LoginPage(database: database, auth: auth),
+      builder: (_) => LoginPage(database: database, auth: auth),
     );
   }
 }

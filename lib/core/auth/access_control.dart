@@ -41,4 +41,22 @@ class AccessControl {
       throw StateError('Only an active admin can $action.');
     }
   }
+
+  /// Allows active staff only (operational create actions).
+  static Future<void> requireActiveStaff(
+    DatabaseExecutor database,
+    int userId, {
+    String action = 'perform this action',
+  }) async {
+    final rows = await database.query(
+      'users',
+      columns: ['id'],
+      where: 'id = ? AND role = ? AND status = ?',
+      whereArgs: [userId, 'staff', 'active'],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError('Only an active staff member can $action.');
+    }
+  }
 }

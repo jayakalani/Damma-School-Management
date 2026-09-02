@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../../app/widgets/glass_admin_ui.dart';
 import '../../core/batches/batch_repository.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/teachers/teacher_repository.dart';
+import '../../core/utils/error_messages.dart';
 
 class BatchManagementPage extends StatefulWidget {
   const BatchManagementPage({
@@ -48,6 +50,13 @@ class _BatchManagementPageState extends State<BatchManagementPage> {
 
   void refreshList() => setState(reload);
 
+  void _resetFilters() {
+    setState(() {
+      search.clear();
+      reload();
+    });
+  }
+
   Future<void> addBatch() async {
     final values = await showBatchEditor(context);
     if (values == null || !mounted) return;
@@ -62,115 +71,273 @@ class _BatchManagementPageState extends State<BatchManagementPage> {
       );
       _message('Batch created.');
       refreshList();
-    } catch (_) {
-      _message('Unable to create the batch.', error: true);
+    } catch (error) {
+      _message(
+        userFacingError(error, fallback: 'Unable to create the batch.'),
+        error: true,
+      );
     }
+  }
+
+  Future<void> editBatch(Map<String, Object?> batch) async {
+    final values = await showBatchEditor(context, batch: batch);
+    if (values == null || !mounted) return;
+
+    try {
+      await repository.updateBatch(
+        database: widget.database,
+        adminId: adminId,
+        batchId: batch['id']! as int,
+        name: values.name,
+        startingYear: values.year,
+        grade: values.grade,
+      );
+      _message('Batch updated.');
+      refreshList();
+    } catch (error) {
+      _message(
+        userFacingError(error, fallback: 'Unable to update the batch.'),
+        error: true,
+      );
+    }
+  }
+
+  Future<void> openBatchDetails(int batchId) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BatchDetailsPage(
+          database: widget.database,
+          auth: widget.auth,
+          batchId: batchId,
+        ),
+      ),
+    );
+    refreshList();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.auth.canAccess(role: 'admin') &&
-        !widget.auth.canAccess(role: 'staff')) {
+    if (!widget.auth.canAccess(role: 'staff')) {
       return const SizedBox.shrink();
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Batch Management'),
-        leading: IconButton(
-          tooltip: 'Back',
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            LayoutBuilder(
-              builder: (context, constraints) => Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  SizedBox(
-                    width: constraints.maxWidth < 720
-                        ? constraints.maxWidth
-                        : 320,
-                    child: TextField(
-                      controller: search,
-                      onChanged: (_) => refreshList(),
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search),
-                        labelText: 'Search batches',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  IconButton(
-                    tooltip: 'Refresh',
-                    onPressed: refreshList,
-                    icon: const Icon(Icons.refresh),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: addBatch,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Create Batch'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: FutureBuilder<List<Map<String, Object?>>>(
-                future: batches,
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return const Center(child: Text('Unable to load batches.'));
-                  }
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.data!.isEmpty) {
-                    return const Center(child: Text('No batches found.'));
-                  }
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    final canCreate = widget.auth.currentSession!.isStaff;
+    final currentYear = DateTime.now().year;
 
-                  return Card(
-                    child: ListView.separated(
-                      itemCount: snapshot.data!.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final batch = snapshot.data![index];
-                        return ListTile(
-                          leading: const Icon(Icons.groups_outlined),
-                          title: Text(batch['batch_name']! as String),
-                          subtitle: Text(
-                            'Starting ${batch['starting_year']} | Current: ${batch['academic_year'] ?? '-'} - Grade ${batch['grade'] ?? '-'}',
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => BatchDetailsPage(
-                                  database: widget.database,
-                                  auth: widget.auth,
-                                  batchId: batch['id']! as int,
-                                ),
-                              ),
-                            );
-                            refreshList();
-                          },
-                        );
-                      },
-                    ),
-                  );
-                },
+    return GlassAdminPage(
+      title: 'Batch Management',
+      subtitle: 'Manage academic batches and promotions',
+      toolbar: canCreate
+          ? GlassToolbarButton(
+              label: 'Create Batch',
+              icon: Icons.add_rounded,
+              accent: accent,
+              onPressed: addBatch,
+            )
+          : null,
+      body: FutureBuilder<List<Map<String, Object?>>>(
+        future: batches,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                userFacingError(
+                  snapshot.error!,
+                  fallback: 'Unable to load batches.',
+                ),
+                textAlign: TextAlign.center,
               ),
+            );
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final allBatches = snapshot.data!;
+          final withCurrentYear = allBatches
+              .where((b) => b['academic_year'] != null)
+              .length;
+          final startedThisYear = allBatches
+              .where((b) => b['starting_year'] == currentYear)
+              .length;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                glassSummaryGrid(
+                  context: context,
+                  accent: accent,
+                  cards: [
+                    GlassSummaryStatCard(
+                      label: 'Total Batches',
+                      value: '${allBatches.length}',
+                      valueColor: theme.colorScheme.onSurface,
+                      accentColor: accent,
+                    ),
+                    GlassSummaryStatCard(
+                      label: 'Active Years',
+                      value: '$withCurrentYear',
+                      valueColor: const Color(0xFF2563EB),
+                      accentColor: const Color(0xFF2563EB),
+                    ),
+                    GlassSummaryStatCard(
+                      label: 'Started This Year',
+                      value: '$startedThisYear',
+                      valueColor: const Color(0xFF16A34A),
+                      accentColor: const Color(0xFF16A34A),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                GlassPanel(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final maxWidth = constraints.maxWidth;
+                      final compact = maxWidth < 720;
+                      final searchWidth = compact ? maxWidth : 280.0;
+
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: searchWidth,
+                            child: TextField(
+                              controller: search,
+                              onChanged: (_) => refreshList(),
+                              decoration: glassInputDecoration(
+                                context,
+                                hint: 'Search batches...',
+                                prefixIcon: Icons.search_rounded,
+                              ),
+                            ),
+                          ),
+                          GlassActionButton(
+                            label: 'Apply',
+                            filled: true,
+                            onPressed: refreshList,
+                          ),
+                          GlassActionButton(
+                            label: 'Reset',
+                            onPressed: _resetFilters,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+                GlassPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      GlassDirectoryHeader(
+                        title: 'Batch Directory',
+                        icon: Icons.groups_outlined,
+                        countLabel: '${allBatches.length} shown',
+                      ),
+                      const SizedBox(height: 16),
+                      if (allBatches.isEmpty)
+                        const GlassEmptyState(
+                          icon: Icons.groups_outlined,
+                          message: 'No batches found.',
+                        )
+                      else ...[
+                        const GlassTableHeader(
+                          columns: [
+                            'ID',
+                            'BATCH NAME',
+                            'STARTING YEAR',
+                            'CURRENT',
+                            'ACTIONS',
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        for (final batch in allBatches)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: GlassListRow(
+                              onTap: () =>
+                                  openBatchDetails(batch['id']! as int),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    flex: 1,
+                                    child: Text(
+                                      '#${batch['id']}',
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      batch['batch_name']! as String,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      '${batch['starting_year']}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      '${batch['academic_year'] ?? '-'} · Grade ${batch['grade'] ?? '-'}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        if (canCreate)
+                                          GlassActionChipButton(
+                                            label: 'Edit',
+                                            color: const Color(0xFF2563EB),
+                                            onPressed: () =>
+                                                editBatch(batch),
+                                          ),
+                                        GlassActionChipButton(
+                                          label: 'Open',
+                                          color: accent,
+                                          onPressed: () => openBatchDetails(
+                                            batch['id']! as int,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -477,15 +644,23 @@ class BatchEditorValues {
   final String grade;
 }
 
-Future<BatchEditorValues?> showBatchEditor(BuildContext context) async {
-  final name = TextEditingController();
-  final year = TextEditingController(text: DateTime.now().year.toString());
-  final grade = TextEditingController();
+Future<BatchEditorValues?> showBatchEditor(
+  BuildContext context, {
+  Map<String, Object?>? batch,
+}) async {
+  final isEdit = batch != null;
+  final name = TextEditingController(text: batch?['batch_name'] as String?);
+  final year = TextEditingController(
+    text: batch == null
+        ? DateTime.now().year.toString()
+        : '${batch['starting_year']}',
+  );
+  final grade = TextEditingController(text: batch?['grade'] as String?);
 
   final result = await showDialog<BatchEditorValues>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Create Batch'),
+      title: Text(isEdit ? 'Edit Batch' : 'Create Batch'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -500,7 +675,9 @@ Future<BatchEditorValues?> showBatchEditor(BuildContext context) async {
           ),
           TextField(
             controller: grade,
-            decoration: const InputDecoration(labelText: 'Starting Grade'),
+            decoration: InputDecoration(
+              labelText: isEdit ? 'Current Grade' : 'Starting Grade',
+            ),
           ),
         ],
       ),
@@ -521,7 +698,7 @@ Future<BatchEditorValues?> showBatchEditor(BuildContext context) async {
               );
             }
           },
-          child: const Text('Create'),
+          child: Text(isEdit ? 'Save' : 'Create'),
         ),
       ],
     ),

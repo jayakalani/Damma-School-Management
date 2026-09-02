@@ -2,6 +2,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../audit/audit_actions.dart';
 import '../audit/audit_log_repository.dart';
+import '../auth/access_control.dart';
 import '../utils/app_validators.dart';
 
 class PastPupilRepository {
@@ -113,16 +114,11 @@ class PastPupilRepository {
   }
 
   Future<void> _requireAdmin(DatabaseExecutor database, int adminId) async {
-    final rows = await database.query(
-      'users',
-      columns: ['id'],
-      where: 'id = ? AND role = ? AND status = ?',
-      whereArgs: [adminId, 'admin', 'active'],
-      limit: 1,
+    await AccessControl.requireActiveAdminOrStaff(
+      database,
+      adminId,
+      action: 'manage past pupils',
     );
-    if (rows.isEmpty) {
-      throw StateError('Only an active admin can manage past pupils.');
-    }
   }
 }
 

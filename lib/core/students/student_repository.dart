@@ -2,6 +2,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../audit/audit_actions.dart';
 import '../audit/audit_log_repository.dart';
+import '../auth/access_control.dart';
 import '../utils/app_validators.dart';
 
 class StudentRepository {
@@ -15,6 +16,8 @@ class StudentRepository {
     required int adminId,
     String query = '',
     String? status,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
     await _requireAdmin(database, adminId);
     final conditions = <String>[];
@@ -31,6 +34,14 @@ class StudentRepository {
       conditions.add('status = ?');
       arguments.add(status);
     }
+    if (startDate != null) {
+      conditions.add('joined_date >= ?');
+      arguments.add(_storageDate(startDate));
+    }
+    if (endDate != null) {
+      conditions.add('joined_date <= ?');
+      arguments.add(_storageDate(endDate));
+    }
     return database.query(
       'students',
       where: conditions.isEmpty ? null : conditions.join(' AND '),
@@ -46,11 +57,16 @@ class StudentRepository {
   }) async {
     _validate(details);
     return database.transaction((transaction) async {
-      await _requireAdmin(transaction, adminId);
+      await AccessControl.requireActiveStaff(
+        transaction,
+        adminId,
+        action: 'register students',
+      );
       final now = DateTime.now().toUtc().toIso8601String();
       final id = await transaction.insert('students', {
         ..._studentDetails(details),
         'status': 'student',
+        'is_active': 1,
         'created_at': now,
         'updated_at': now,
       });
@@ -94,6 +110,45 @@ class StudentRepository {
         entityType: 'student',
         entityId: studentId,
         description: 'Admin updated student ${details['full_name']}.',
+      );
+    });
+  }
+
+  Future<void> setStudentActive({
+    required Database database,
+    required int adminId,
+    required int studentId,
+    required bool active,
+  }) async {
+    await database.transaction((transaction) async {
+      await _requireAdmin(transaction, adminId);
+      final rows = await transaction.query(
+        'students',
+        columns: ['id', 'status', 'full_name'],
+        where: 'id = ?',
+        whereArgs: [studentId],
+        limit: 1,
+      );
+      if (rows.isEmpty) throw StateError('Student not found.');
+      if (rows.single['status'] != 'student') {
+        throw StateError('Only enrolled students can be activated or deactivated.');
+      }
+      final now = DateTime.now().toUtc().toIso8601String();
+      await transaction.update(
+        'students',
+        {'is_active': active ? 1 : 0, 'updated_at': now},
+        where: 'id = ?',
+        whereArgs: [studentId],
+      );
+      await _auditLogs.record(
+        database: transaction,
+        userId: adminId,
+        action: AuditActions.studentStatusChanged,
+        module: 'student_management',
+        entityType: 'student',
+        entityId: studentId,
+        description:
+            'Staff ${active ? 'activated' : 'deactivated'} student ${rows.single['full_name']}.',
       );
     });
   }
@@ -204,16 +259,11 @@ class StudentRepository {
   };
 
   Future<void> _requireAdmin(DatabaseExecutor database, int adminId) async {
-    final rows = await database.query(
-      'users',
-      columns: ['id'],
-      where: 'id = ? AND role = ? AND status = ?',
-      whereArgs: [adminId, 'admin', 'active'],
-      limit: 1,
+    await AccessControl.requireActiveAdminOrStaff(
+      database,
+      adminId,
+      action: 'manage students',
     );
-    if (rows.isEmpty) {
-      throw StateError('Only an active admin can manage students.');
-    }
   }
 
   Future<void> _requireStudent(DatabaseExecutor database, int studentId) async {
@@ -226,6 +276,9 @@ class StudentRepository {
     );
     if (rows.isEmpty) throw StateError('Student not found.');
   }
+
+  String _storageDate(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 }
 
 class InvalidStudentException implements Exception {

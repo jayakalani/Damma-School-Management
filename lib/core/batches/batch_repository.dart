@@ -2,6 +2,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../audit/audit_actions.dart';
 import '../audit/audit_log_repository.dart';
+import '../auth/access_control.dart';
 
 class BatchRepository {
   BatchRepository({AuditLogRepository? auditLogs})
@@ -228,7 +229,11 @@ class BatchRepository {
   }) async {
     _validate(name, startingYear, startingGrade);
     return database.transaction((transaction) async {
-      await _requireAdmin(transaction, adminId);
+      await AccessControl.requireActiveStaff(
+        transaction,
+        adminId,
+        action: 'create batches',
+      );
       final now = DateTime.now().toUtc().toIso8601String();
       final batchId = await transaction.insert('batches', {
         'batch_name': name.trim(),
@@ -255,6 +260,64 @@ class BatchRepository {
         description: 'Admin created batch ${name.trim()}.',
       );
       return historyId;
+    });
+  }
+
+  Future<void> updateBatch({
+    required Database database,
+    required int adminId,
+    required int batchId,
+    required String name,
+    required int startingYear,
+    required String grade,
+  }) async {
+    _validate(name, startingYear, grade);
+    await database.transaction((transaction) async {
+      await AccessControl.requireActiveStaff(
+        transaction,
+        adminId,
+        action: 'update batches',
+      );
+      final batchRows = await transaction.query(
+        'batches',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [batchId],
+        limit: 1,
+      );
+      if (batchRows.isEmpty) throw StateError('Batch not found.');
+
+      final currentHistory = await _currentHistory(transaction, batchId);
+      final now = DateTime.now().toUtc().toIso8601String();
+
+      await transaction.update(
+        'batches',
+        {
+          'batch_name': name.trim(),
+          'starting_year': startingYear,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [batchId],
+      );
+      await transaction.update(
+        'batch_history',
+        {
+          'grade': grade.trim(),
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [currentHistory['id']],
+      );
+      await _auditLogs.record(
+        database: transaction,
+        userId: adminId,
+        action: AuditActions.batchUpdated,
+        module: 'batch_management',
+        entityType: 'batch',
+        entityId: batchId,
+        description: 'Staff updated batch ${name.trim()}.',
+      );
     });
   }
 
@@ -342,16 +405,11 @@ class BatchRepository {
   }
 
   Future<void> _requireAdmin(DatabaseExecutor database, int adminId) async {
-    final rows = await database.query(
-      'users',
-      columns: ['id'],
-      where: 'id = ? AND role = ? AND status = ?',
-      whereArgs: [adminId, 'admin', 'active'],
-      limit: 1,
+    await AccessControl.requireActiveAdminOrStaff(
+      database,
+      adminId,
+      action: 'manage batches',
     );
-    if (rows.isEmpty) {
-      throw StateError('Only an active admin can manage batches.');
-    }
   }
 }
 

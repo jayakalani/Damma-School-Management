@@ -14,6 +14,7 @@ class AuditActions {
   static const studentAdded = 'student_added';
   static const studentUpdated = 'student_updated';
   static const studentPastPupil = 'student_changed_to_past_pupil';
+  static const studentStatusChanged = 'student_status_changed';
   static const studentsBulkPastPupil = 'students_bulk_changed_to_past_pupils';
   static const batchTeacherChanged = 'batch_teacher_changed';
   static const examinationCreated = 'examination_created';

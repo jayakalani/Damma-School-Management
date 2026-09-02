@@ -16,6 +16,8 @@ class TeacherRepository {
     required int adminId,
     String query = '',
     String? status,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
     await AccessControl.requireActiveAdminOrStaff(
       database,
@@ -34,6 +36,14 @@ class TeacherRepository {
     if (status != null) {
       conditions.add('status = ?');
       arguments.add(status);
+    }
+    if (startDate != null) {
+      conditions.add('registered_date >= ?');
+      arguments.add(_storageDate(startDate));
+    }
+    if (endDate != null) {
+      conditions.add('registered_date <= ?');
+      arguments.add(_storageDate(endDate));
     }
     return database.query(
       'teachers',
@@ -247,6 +257,9 @@ class TeacherRepository {
     final text = value?.toString().trim() ?? '';
     return text.isEmpty ? null : text;
   }
+
+  String _storageDate(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
   Future<void> _requireTeacher(DatabaseExecutor database, int teacherId) async {
     final rows = await database.query(

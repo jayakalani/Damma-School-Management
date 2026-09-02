@@ -5,6 +5,17 @@ import 'package:damma_school_management_system/core/batches/batch_repository.dar
 import 'package:damma_school_management_system/core/database/app_database.dart';
 import 'package:damma_school_management_system/core/past_pupils/past_pupil_repository.dart';
 import 'package:damma_school_management_system/core/students/student_repository.dart';
+import 'package:damma_school_management_system/core/users/user_repository.dart';
+
+Future<int> _createStaff(Database connection, int adminId) {
+  return UserRepository().createStaff(
+    database: connection,
+    adminId: adminId,
+    fullName: 'Staff User',
+    username: 'staff.student.${DateTime.now().microsecondsSinceEpoch}',
+    password: 'StaffPassword123!',
+  );
+}
 
 void main() {
   test('converts a student without purging exams or batch history', () async {
@@ -12,11 +23,12 @@ void main() {
     final database = AppDatabase(factory: databaseFactoryFfi);
     final connection = await database.openAt(inMemoryDatabasePath);
     final adminId = (await connection.query('users')).single['id']! as int;
+    final staffId = await _createStaff(connection, adminId);
     final students = StudentRepository();
     final batches = BatchRepository();
     final studentId = await students.createStudent(
       database: connection,
-      adminId: adminId,
+      adminId: staffId,
       details: {
         'full_name': 'A Student',
         'name_with_initials': 'A. Student',
@@ -25,7 +37,7 @@ void main() {
     );
     await batches.createBatch(
       database: connection,
-      adminId: adminId,
+      adminId: staffId,
       name: 'Student Batch',
       startingYear: 2026,
       startingGrade: 'Grade 1',
@@ -104,11 +116,12 @@ void main() {
       final database = AppDatabase(factory: databaseFactoryFfi);
       final connection = await database.openAt(inMemoryDatabasePath);
       final adminId = (await connection.query('users')).single['id']! as int;
+      final staffId = await _createStaff(connection, adminId);
       final students = StudentRepository();
       final batches = BatchRepository();
       final first = await students.createStudent(
         database: connection,
-        adminId: adminId,
+        adminId: staffId,
         details: {
           'full_name': 'First Student',
           'name_with_initials': 'F. Student',
@@ -117,7 +130,7 @@ void main() {
       );
       final second = await students.createStudent(
         database: connection,
-        adminId: adminId,
+        adminId: staffId,
         details: {
           'full_name': 'Second Student',
           'name_with_initials': 'S. Student',
@@ -126,7 +139,7 @@ void main() {
       );
       await batches.createBatch(
         database: connection,
-        adminId: adminId,
+        adminId: staffId,
         name: 'Bulk Batch',
         startingYear: 2026,
         startingGrade: 'Grade 1',
@@ -180,6 +193,143 @@ void main() {
       await database.close();
     },
   );
+
+  test('filters students by joined date range', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(inMemoryDatabasePath);
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final staffId = await _createStaff(connection, adminId);
+    final students = StudentRepository();
+    await students.createStudent(
+      database: connection,
+      adminId: staffId,
+      details: {
+        'full_name': 'Early Student',
+        'name_with_initials': 'E. Student',
+        'joined_date': '2026-01-01',
+      },
+    );
+    await students.createStudent(
+      database: connection,
+      adminId: staffId,
+      details: {
+        'full_name': 'Late Student',
+        'name_with_initials': 'L. Student',
+        'joined_date': '2026-06-01',
+      },
+    );
+
+    final filtered = await students.searchStudents(
+      database: connection,
+      adminId: adminId,
+      startDate: DateTime(2026, 3, 1),
+      endDate: DateTime(2026, 12, 31),
+    );
+
+    expect(filtered, hasLength(1));
+    expect(filtered.single['full_name'], 'Late Student');
+    await database.close();
+  });
+
+  test('toggles active status for enrolled students only', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(inMemoryDatabasePath);
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final staffId = await _createStaff(connection, adminId);
+    final students = StudentRepository();
+    final studentId = await students.createStudent(
+      database: connection,
+      adminId: staffId,
+      details: {
+        'full_name': 'Toggle Student',
+        'name_with_initials': 'T. Student',
+        'joined_date': '2026-01-01',
+      },
+    );
+
+    await students.setStudentActive(
+      database: connection,
+      adminId: adminId,
+      studentId: studentId,
+      active: false,
+    );
+    expect(
+      (await connection.query(
+        'students',
+        where: 'id = ?',
+        whereArgs: [studentId],
+      )).single['is_active'],
+      0,
+    );
+
+    await students.setStudentActive(
+      database: connection,
+      adminId: adminId,
+      studentId: studentId,
+      active: true,
+    );
+    expect(
+      (await connection.query(
+        'students',
+        where: 'id = ?',
+        whereArgs: [studentId],
+      )).single['is_active'],
+      1,
+    );
+
+    await students.convertToPastPupil(
+      database: connection,
+      adminId: adminId,
+      studentId: studentId,
+    );
+    await expectLater(
+      students.setStudentActive(
+        database: connection,
+        adminId: adminId,
+        studentId: studentId,
+        active: true,
+      ),
+      throwsA(isA<StateError>()),
+    );
+    await database.close();
+  });
+
+  test('allows multiple students with the same joined date and birthday', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(inMemoryDatabasePath);
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final staffId = await _createStaff(connection, adminId);
+    final students = StudentRepository();
+    const shared = {
+      'joined_date': '2026-09-02',
+      'date_of_birth': '2010-05-01',
+    };
+
+    await students.createStudent(
+      database: connection,
+      adminId: staffId,
+      details: {
+        ...shared,
+        'full_name': 'First Student',
+        'name_with_initials': 'F. Student',
+      },
+    );
+    await students.createStudent(
+      database: connection,
+      adminId: staffId,
+      details: {
+        ...shared,
+        'full_name': 'Second Student',
+        'name_with_initials': 'S. Student',
+      },
+    );
+
+    expect(await connection.query('students'), hasLength(2));
+    await database.close();
+  });
 
   test('adds legacy alumni to a historical past pupil batch', () async {
     sqfliteFfiInit();

@@ -3,7 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 class DatabaseSchema {
   const DatabaseSchema._();
 
-  static const version = 2;
+  static const version = 3;
 
   static Future<void> onConfigure(Database database) async {
     await database.execute('PRAGMA foreign_keys = ON');
@@ -20,6 +20,24 @@ class DatabaseSchema {
   static Future<void> onUpgrade(Database database, int oldVersion, int newVersion) async {
     if (oldVersion < 1) await onCreate(database, newVersion);
     if (oldVersion < 2) await ensureComplete(database);
+    if (oldVersion < 3) await _migrateToV3(database);
+  }
+
+  static Future<void> _migrateToV3(Database database) async {
+    await _ensureStudentColumns(database);
+  }
+
+  static Future<void> _ensureStudentColumns(Database database) async {
+    final columns = await database.rawQuery('PRAGMA table_info(students)');
+    final hasIsActive = columns.any((row) => row['name'] == 'is_active');
+    if (!hasIsActive) {
+      await database.execute(
+        'ALTER TABLE students ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+      );
+    }
+    // Empty NIC values collide on the UNIQUE constraint; store them as NULL instead.
+    await database.execute("UPDATE students SET nic = NULL WHERE nic = ''");
+    await database.execute("UPDATE teachers SET nic = NULL WHERE nic = ''");
   }
 
   static Future<void> ensureComplete(Database database) async {
@@ -32,6 +50,8 @@ class DatabaseSchema {
       await database.execute(sql);
       existingTables.add(tableName);
     }
+
+    await _ensureStudentColumns(database);
 
     final indexRows = await database.rawQuery("SELECT name FROM sqlite_master WHERE type = 'index'");
     final existingIndexes = indexRows.map((row) => row['name'] as String).toSet();
@@ -57,7 +77,7 @@ class DatabaseSchema {
     '''CREATE TABLE teacher_qualifications (id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER NOT NULL, qualification TEXT NOT NULL, institution TEXT, completion_year INTEGER, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE RESTRICT ON UPDATE CASCADE)''',
     '''CREATE TABLE batches (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_name TEXT NOT NULL, starting_year INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)''',
     '''CREATE TABLE batch_history (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGER NOT NULL, academic_year INTEGER NOT NULL, grade TEXT NOT NULL, started_date TEXT NOT NULL, ended_date TEXT, is_current INTEGER NOT NULL DEFAULT 1 CHECK (is_current IN (0, 1)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE RESTRICT ON UPDATE CASCADE)''',
-    '''CREATE TABLE students (id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT NOT NULL, name_with_initials TEXT NOT NULL, date_of_birth TEXT, nic TEXT UNIQUE, phone_number TEXT, address TEXT, joined_date TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'student' CHECK (status IN ('student', 'past_pupil')), created_at TEXT NOT NULL, updated_at TEXT NOT NULL)''',
+    '''CREATE TABLE students (id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT NOT NULL, name_with_initials TEXT NOT NULL, date_of_birth TEXT, nic TEXT UNIQUE, phone_number TEXT, address TEXT, joined_date TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'student' CHECK (status IN ('student', 'past_pupil')), is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL)''',
     '''CREATE TABLE student_batch_history (id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, batch_id INTEGER NOT NULL, batch_history_id INTEGER NOT NULL, joined_date TEXT NOT NULL, left_date TEXT, is_current INTEGER NOT NULL DEFAULT 1 CHECK (is_current IN (0, 1)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE RESTRICT ON UPDATE CASCADE, FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE RESTRICT ON UPDATE CASCADE, FOREIGN KEY (batch_history_id) REFERENCES batch_history(id) ON DELETE RESTRICT ON UPDATE CASCADE)''',
     '''CREATE TABLE batch_teacher_history (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_history_id INTEGER NOT NULL, teacher_id INTEGER NOT NULL, assigned_date TEXT NOT NULL, removed_date TEXT, is_current INTEGER NOT NULL DEFAULT 1 CHECK (is_current IN (0, 1)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY (batch_history_id) REFERENCES batch_history(id) ON DELETE RESTRICT ON UPDATE CASCADE, FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE RESTRICT ON UPDATE CASCADE)''',
     '''CREATE TABLE examinations (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_history_id INTEGER NOT NULL, examination_name TEXT NOT NULL, examination_date TEXT NOT NULL, total_marks REAL NOT NULL CHECK (total_marks >= 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY (batch_history_id) REFERENCES batch_history(id) ON DELETE RESTRICT ON UPDATE CASCADE)''',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../app/widgets/date_picker_field.dart';
+import '../../app/widgets/glass_admin_ui.dart';
 
 import '../../core/examinations/examination_repository.dart';
 import '../../core/services/auth_service.dart';
@@ -73,85 +74,181 @@ class _ExaminationManagementPageState extends State<ExaminationManagementPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.auth.canAccess(role: 'admin') &&
-        !widget.auth.canAccess(role: 'staff')) {
+    if (!widget.auth.canAccess(role: 'staff')) {
       return const SizedBox.shrink();
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Examinations'),
-        leading: IconButton(
-          tooltip: 'Back',
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: createExam,
-                icon: const Icon(Icons.add),
-                label: const Text('Define Examination'),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: FutureBuilder<List<Map<String, Object?>>>(
-                future: examinations,
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return Center(
-                      child: snapshot.hasError
-                          ? Text(
-                              userFacingError(
-                                snapshot.error!,
-                                fallback: 'Unable to load examinations.',
-                              ),
-                            )
-                          : const CircularProgressIndicator(),
-                    );
-                  }
-                  if (snapshot.data!.isEmpty) {
-                    return const Center(child: Text('No examinations defined.'));
-                  }
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    final canCreate = widget.auth.currentSession!.isStaff;
 
-                  return Card(
-                    child: ListView.separated(
-                      itemCount: snapshot.data!.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final exam = snapshot.data![index];
-                        return ListTile(
-                          leading: const Icon(Icons.assignment_outlined),
-                          title: Text(exam['examination_name']! as String),
-                          subtitle: Text(
-                            '${exam['batch_name']} | ${exam['academic_year']} - ${exam['grade']} | Total ${exam['total_marks']}',
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => MarksEntryPage(
-                                database: widget.database,
-                                auth: widget.auth,
-                                examinationId: exam['id']! as int,
+    return GlassAdminPage(
+      title: 'Examinations',
+      subtitle: 'Define examinations and manage student marks',
+      toolbar: canCreate
+          ? GlassToolbarButton(
+              label: 'Define Examination',
+              icon: Icons.add_rounded,
+              accent: accent,
+              onPressed: createExam,
+            )
+          : null,
+      body: FutureBuilder<List<Map<String, Object?>>>(
+        future: examinations,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return Center(
+              child: snapshot.hasError
+                  ? Text(
+                      userFacingError(
+                        snapshot.error!,
+                        fallback: 'Unable to load examinations.',
+                      ),
+                    )
+                  : const CircularProgressIndicator(),
+            );
+          }
+
+          final allExams = snapshot.data!;
+          final uniqueBatches = allExams
+              .map((e) => e['batch_name'])
+              .whereType<String>()
+              .toSet()
+              .length;
+          final currentYear = DateTime.now().year;
+          final thisYearCount = allExams
+              .where((e) => '${e['examination_date']}'.startsWith('$currentYear'))
+              .length;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                glassSummaryGrid(
+                  context: context,
+                  accent: accent,
+                  cards: [
+                    GlassSummaryStatCard(
+                      label: 'Total Examinations',
+                      value: '${allExams.length}',
+                      valueColor: theme.colorScheme.onSurface,
+                      accentColor: accent,
+                    ),
+                    GlassSummaryStatCard(
+                      label: 'Batches',
+                      value: '$uniqueBatches',
+                      valueColor: const Color(0xFF2563EB),
+                      accentColor: const Color(0xFF2563EB),
+                    ),
+                    GlassSummaryStatCard(
+                      label: 'This Year',
+                      value: '$thisYearCount',
+                      valueColor: const Color(0xFF16A34A),
+                      accentColor: const Color(0xFF16A34A),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                GlassPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      GlassDirectoryHeader(
+                        title: 'Examination Directory',
+                        icon: Icons.assignment_outlined,
+                        countLabel: '${allExams.length} shown',
+                      ),
+                      const SizedBox(height: 16),
+                      if (allExams.isEmpty)
+                        const GlassEmptyState(
+                          icon: Icons.assignment_outlined,
+                          message: 'No examinations defined.',
+                        )
+                      else ...[
+                        const GlassTableHeader(
+                          columns: [
+                            'ID',
+                            'EXAMINATION',
+                            'BATCH',
+                            'DETAILS',
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        for (final exam in allExams)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: GlassListRow(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => MarksEntryPage(
+                                    database: widget.database,
+                                    auth: widget.auth,
+                                    examinationId: exam['id']! as int,
+                                  ),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    flex: 1,
+                                    child: Text(
+                                      '#${exam['id']}',
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      exam['examination_name']! as String,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      exam['batch_name']! as String,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            '${exam['academic_year']} · ${exam['grade']} · ${exam['total_marks']} marks',
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        Icon(
+                                          Icons.chevron_right_rounded,
+                                          color: accent,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  );
-                },
-              ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

@@ -3,6 +3,17 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:damma_school_management_system/core/batches/batch_repository.dart';
 import 'package:damma_school_management_system/core/database/app_database.dart';
+import 'package:damma_school_management_system/core/users/user_repository.dart';
+
+Future<int> _createStaff(Database connection, int adminId) {
+  return UserRepository().createStaff(
+    database: connection,
+    adminId: adminId,
+    fullName: 'Staff User',
+    username: 'staff.batch.${DateTime.now().microsecondsSinceEpoch}',
+    password: 'StaffPassword123!',
+  );
+}
 
 void main() {
   test('creates batch details and promotes without losing history', () async {
@@ -10,11 +21,12 @@ void main() {
     final database = AppDatabase(factory: databaseFactoryFfi);
     final connection = await database.openAt(inMemoryDatabasePath);
     final adminId = (await connection.query('users')).single['id']! as int;
+    final staffId = await _createStaff(connection, adminId);
     final repository = BatchRepository();
 
     await repository.createBatch(
       database: connection,
-      adminId: adminId,
+      adminId: staffId,
       name: 'Class of 2026',
       startingYear: 2026,
       startingGrade: 'Grade 1',
@@ -73,11 +85,12 @@ void main() {
       final database = AppDatabase(factory: databaseFactoryFfi);
       final connection = await database.openAt(inMemoryDatabasePath);
       final adminId = (await connection.query('users')).single['id']! as int;
+      final staffId = await _createStaff(connection, adminId);
       final repository = BatchRepository();
 
       final batchHistoryId = await repository.createBatch(
         database: connection,
-        adminId: adminId,
+        adminId: staffId,
         name: 'Timeline Batch',
         startingYear: 2026,
         startingGrade: 'Grade 1',
@@ -169,4 +182,103 @@ void main() {
       await database.close();
     },
   );
+
+  test('allows active staff to manage batches', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(inMemoryDatabasePath);
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final users = UserRepository();
+    final staffId = await users.createStaff(
+      database: connection,
+      adminId: adminId,
+      fullName: 'Staff User',
+      username: 'staff.batch',
+      password: 'StaffPassword123!',
+    );
+    final repository = BatchRepository();
+
+    await repository.createBatch(
+      database: connection,
+      adminId: staffId,
+      name: 'Staff Batch',
+      startingYear: 2026,
+      startingGrade: 'Grade 1',
+    );
+
+    final batches = await repository.listBatches(
+      database: connection,
+      adminId: staffId,
+    );
+    expect(batches.single['batch_name'], 'Staff Batch');
+
+    await database.close();
+  });
+
+  test('rejects admin from creating batches', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(inMemoryDatabasePath);
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final repository = BatchRepository();
+
+    await expectLater(
+      repository.createBatch(
+        database: connection,
+        adminId: adminId,
+        name: 'Admin Batch',
+        startingYear: 2026,
+        startingGrade: 'Grade 1',
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'Only an active staff member can create batches.',
+        ),
+      ),
+    );
+
+    await database.close();
+  });
+
+  test('updates batch name, starting year, and current grade', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(inMemoryDatabasePath);
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final staffId = await _createStaff(connection, adminId);
+    final repository = BatchRepository();
+
+    await repository.createBatch(
+      database: connection,
+      adminId: staffId,
+      name: 'Original Batch',
+      startingYear: 2026,
+      startingGrade: 'Grade 1',
+    );
+    final batchId = (await connection.query('batches')).single['id']! as int;
+
+    await repository.updateBatch(
+      database: connection,
+      adminId: staffId,
+      batchId: batchId,
+      name: 'Updated Batch',
+      startingYear: 2025,
+      grade: 'Grade 2',
+    );
+
+    final batch = (await connection.query('batches')).single;
+    final history = await connection.query(
+      'batch_history',
+      where: 'batch_id = ? AND is_current = 1',
+      whereArgs: [batchId],
+    );
+
+    expect(batch['batch_name'], 'Updated Batch');
+    expect(batch['starting_year'], 2025);
+    expect(history.single['grade'], 'Grade 2');
+
+    await database.close();
+  });
 }

@@ -143,4 +143,47 @@ void main() {
 
     await database.close();
   });
+
+  test('filters teachers by registered date range', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(inMemoryDatabasePath);
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final repository = TeacherRepository();
+
+    await repository.createTeacher(
+      database: connection,
+      adminId: adminId,
+      details: {
+        'full_name': 'Early Teacher',
+        'name_with_initials': 'E. Teacher',
+        'registered_date': '2026-01-10',
+        'status': 'active',
+      },
+      qualifications: const [],
+    );
+    await repository.createTeacher(
+      database: connection,
+      adminId: adminId,
+      details: {
+        'full_name': 'Late Teacher',
+        'name_with_initials': 'L. Teacher',
+        'registered_date': '2026-03-15',
+        'status': 'active',
+      },
+      qualifications: const [],
+    );
+
+    final filtered = await repository.searchTeachers(
+      database: connection,
+      adminId: adminId,
+      startDate: DateTime(2026, 2, 1),
+      endDate: DateTime(2026, 3, 31),
+    );
+
+    expect(filtered, hasLength(1));
+    expect(filtered.single['full_name'], 'Late Teacher');
+
+    await database.close();
+  });
 }
