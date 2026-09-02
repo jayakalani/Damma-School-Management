@@ -185,6 +185,27 @@ class _TeacherManagementPageState extends State<TeacherManagementPage> {
     );
   }
 
+  Future<void> viewTeacher(Map<String, Object?> teacher) async {
+    try {
+      final qualificationRows = await repository.qualifications(
+        database: widget.database,
+        adminId: adminId,
+        teacherId: teacher['id']! as int,
+      );
+      if (!mounted) return;
+      await showTeacherDetails(
+        context,
+        teacher: teacher,
+        qualifications: qualificationRows,
+      );
+    } catch (error) {
+      _message(
+        userFacingError(error, fallback: 'Unable to load teacher details.'),
+        error: true,
+      );
+    }
+  }
+
   Future<void> editTeacher(Map<String, Object?> teacher) async {
     final qualificationRows = await repository.qualifications(
       database: widget.database,
@@ -575,6 +596,7 @@ class _TeacherManagementPageState extends State<TeacherManagementPage> {
                                     padding: const EdgeInsets.only(bottom: 8),
                                     child: _TeacherTableRow(
                                       teacher: teacher,
+                                      onView: () => viewTeacher(teacher),
                                       onEdit: () => editTeacher(teacher),
                                       onToggleStatus: () =>
                                           toggleStatus(teacher),
@@ -871,11 +893,13 @@ class _TeacherTableHeader extends StatelessWidget {
 class _TeacherTableRow extends StatefulWidget {
   const _TeacherTableRow({
     required this.teacher,
+    required this.onView,
     required this.onEdit,
     required this.onToggleStatus,
   });
 
   final Map<String, Object?> teacher;
+  final VoidCallback onView;
   final VoidCallback onEdit;
   final VoidCallback onToggleStatus;
 
@@ -955,6 +979,11 @@ class _TeacherTableRowState extends State<_TeacherTableRow> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
+                    _ActionChipButton(
+                      label: 'View',
+                      color: const Color(0xFF0891B2),
+                      onPressed: widget.onView,
+                    ),
                     _ActionChipButton(
                       label: 'Edit',
                       color: const Color(0xFF2563EB),
@@ -1395,3 +1424,281 @@ String _label(String key) => key
     .split('_')
     .map((part) => part[0].toUpperCase() + part.substring(1))
     .join(' ');
+
+String _displayValue(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? '—' : text;
+}
+
+Future<void> showTeacherDetails(
+  BuildContext context, {
+  required Map<String, Object?> teacher,
+  required List<Map<String, Object?>> qualifications,
+}) {
+  final active = teacher['status'] == 'active';
+  const detailKeys = [
+    'full_name',
+    'name_with_initials',
+    'date_of_birth',
+    'nic',
+    'phone_number',
+    'address',
+    'registered_date',
+  ];
+  const bankKeys = [
+    'bank_account_number',
+    'bank_name',
+    'bank_branch',
+  ];
+
+  return showDialog<void>(
+    context: context,
+    builder: (context) {
+      final theme = Theme.of(context);
+      return AlertDialog(
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                teacher['full_name']! as String,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: (active ? const Color(0xFF16A34A) : Colors.grey.shade600)
+                    .withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: active
+                      ? const Color(0xFF16A34A)
+                      : Colors.grey.shade600,
+                ),
+              ),
+              child: Text(
+                active ? 'Active' : 'Inactive',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: active
+                      ? const Color(0xFF16A34A)
+                      : Colors.grey.shade700,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 620,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _TeacherDetailSection(
+                  title: 'Personal Information',
+                  icon: Icons.person_outline,
+                  children: [
+                    _TeacherDetailRow(
+                      label: 'Teacher ID',
+                      value: '#${teacher['id']}',
+                    ),
+                    for (final key in detailKeys)
+                      _TeacherDetailRow(
+                        label: _label(key),
+                        value: _displayValue(teacher[key]),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _TeacherDetailSection(
+                  title: 'Bank Details',
+                  icon: Icons.account_balance_outlined,
+                  children: [
+                    for (final key in bankKeys)
+                      _TeacherDetailRow(
+                        label: _label(key),
+                        value: _displayValue(teacher[key]),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _TeacherDetailSection(
+                  title: 'Qualifications',
+                  icon: Icons.school_outlined,
+                  children: qualifications.isEmpty
+                      ? [
+                          const _TeacherDetailRow(
+                            label: 'Records',
+                            value: 'No qualifications recorded.',
+                          ),
+                        ]
+                      : [
+                          for (var index = 0; index < qualifications.length; index++)
+                            _QualificationDetailCard(
+                              index: index + 1,
+                              qualification: qualifications[index],
+                            ),
+                        ],
+                ),
+                const SizedBox(height: 16),
+                _TeacherDetailSection(
+                  title: 'Record Info',
+                  icon: Icons.info_outline,
+                  children: [
+                    _TeacherDetailRow(
+                      label: 'Created At',
+                      value: _displayValue(teacher['created_at']),
+                    ),
+                    _TeacherDetailRow(
+                      label: 'Updated At',
+                      value: _displayValue(teacher['updated_at']),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+class _TeacherDetailSection extends StatelessWidget {
+  const _TeacherDetailSection({
+    required this.title,
+    required this.icon,
+    required this.children,
+  });
+
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 20, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TeacherDetailRow extends StatelessWidget {
+  const _TeacherDetailRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 150,
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QualificationDetailCard extends StatelessWidget {
+  const _QualificationDetailCard({
+    required this.index,
+    required this.qualification,
+  });
+
+  final int index;
+  final Map<String, Object?> qualification;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: Theme.of(context).dividerColor),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _TeacherDetailRow(
+                label: 'Qualification $index',
+                value: _displayValue(qualification['qualification']),
+              ),
+              _TeacherDetailRow(
+                label: 'Institution',
+                value: _displayValue(qualification['institution']),
+              ),
+              _TeacherDetailRow(
+                label: 'Completion Year',
+                value: _displayValue(qualification['completion_year']),
+              ),
+              _TeacherDetailRow(
+                label: 'Notes',
+                value: _displayValue(qualification['notes']),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

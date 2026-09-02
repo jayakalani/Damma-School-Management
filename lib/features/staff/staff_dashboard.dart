@@ -27,6 +27,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
     ('Students', Icons.school_rounded, AppRoutes.studentManagement),
     ('Past Pupils', Icons.history_edu_rounded, AppRoutes.historicalPastPupils),
     ('Exams', Icons.assignment_rounded, AppRoutes.examinationManagement),
+    ('Competitions', Icons.emoji_events_rounded, AppRoutes.competitionManagement),
     ('Backup', Icons.backup_rounded, AppRoutes.backupManagement),
   ];
 
@@ -217,6 +218,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
       ('Students', Icons.school_rounded, 'Manage student records', AppRoutes.studentManagement),
       ('Examinations', Icons.assignment_rounded, 'Manage exams and marks', AppRoutes.examinationManagement),
       ('Past Pupils', Icons.history_edu_rounded, 'Review alumni records', AppRoutes.historicalPastPupils),
+      ('Competitions', Icons.emoji_events_rounded, 'Manage and view school competitions.', AppRoutes.competitionManagement),
       ('Database Backup', Icons.backup_rounded, 'Backup application data', AppRoutes.backupManagement),
     ];
 
@@ -225,7 +227,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
       children: [
         LayoutBuilder(
           builder: (context, constraints) {
-            final columns = constraints.maxWidth >= 1100 ? 4 : constraints.maxWidth >= 700 ? 2 : 1;
+            final width = MediaQuery.sizeOf(context).width;
+            final columns = width >= 900 ? 4 : width >= 600 ? 2 : 1;
             return GridView.count(
               crossAxisCount: columns,
               shrinkWrap: true,
@@ -258,7 +261,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
-            final columns = constraints.maxWidth >= 1100 ? 3 : constraints.maxWidth >= 700 ? 2 : 1;
+            final width = MediaQuery.sizeOf(context).width;
+            final columns = width >= 900 ? 3 : width >= 600 ? 2 : 1;
             return GridView.count(
               crossAxisCount: columns,
               shrinkWrap: true,

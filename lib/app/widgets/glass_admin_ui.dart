@@ -140,12 +140,14 @@ class GlassSummaryStatCard extends StatefulWidget {
     required this.value,
     required this.valueColor,
     required this.accentColor,
+    this.dense = false,
   });
 
   final String label;
   final String value;
   final Color valueColor;
   final Color accentColor;
+  final bool dense;
 
   @override
   State<GlassSummaryStatCard> createState() => _GlassSummaryStatCardState();
@@ -180,9 +182,14 @@ class _GlassSummaryStatCardState extends State<GlassSummaryStatCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(height: 3, color: widget.accentColor),
+                Container(
+                  height: widget.dense ? 2 : 3,
+                  color: widget.accentColor,
+                ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  padding: widget.dense
+                      ? const EdgeInsets.fromLTRB(12, 8, 12, 8)
+                      : const EdgeInsets.fromLTRB(16, 10, 16, 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -193,18 +200,21 @@ class _GlassSummaryStatCardState extends State<GlassSummaryStatCard> {
                                   .colorScheme
                                   .onSurfaceVariant,
                               fontWeight: FontWeight.w500,
+                              fontSize: widget.dense ? 11 : null,
                             ),
                       ),
-                      const SizedBox(height: 6),
+                      SizedBox(height: widget.dense ? 4 : 6),
                       Text(
                         widget.value,
-                        style:
-                            Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                  color: widget.valueColor,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1,
-                                  letterSpacing: -0.5,
-                                ),
+                        style: (widget.dense
+                                ? Theme.of(context).textTheme.titleLarge
+                                : Theme.of(context).textTheme.headlineMedium)
+                            ?.copyWith(
+                          color: widget.valueColor,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                          letterSpacing: -0.5,
+                        ),
                       ),
                     ],
                   ),
@@ -554,21 +564,28 @@ Widget glassSummaryGrid({
   required BuildContext context,
   required Color accent,
   required List<GlassSummaryStatCard> cards,
+  int? columns,
 }) {
   return LayoutBuilder(
     builder: (context, constraints) {
-      final columns = constraints.maxWidth >= 900
-          ? 3
-          : constraints.maxWidth >= 560
-              ? 2
-              : 1;
+      final resolvedColumns = columns ??
+          (constraints.maxWidth >= 900
+              ? 3
+              : constraints.maxWidth >= 560
+                  ? 2
+                  : 1);
+      final aspectRatio = resolvedColumns >= 4
+          ? 3.6
+          : resolvedColumns == 1
+              ? 4.8
+              : 4.2;
       return GridView.count(
-        crossAxisCount: columns,
+        crossAxisCount: resolvedColumns,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
-        childAspectRatio: columns == 1 ? 4.8 : 4.2,
+        crossAxisSpacing: resolvedColumns >= 4 ? 10 : 12,
+        mainAxisSpacing: resolvedColumns >= 4 ? 10 : 12,
+        childAspectRatio: aspectRatio,
         children: cards,
       );
     },

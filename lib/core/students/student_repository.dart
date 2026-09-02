@@ -16,6 +16,7 @@ class StudentRepository {
     required int adminId,
     String query = '',
     String? status,
+    int? batchId,
     DateTime? startDate,
     DateTime? endDate,
   }) async {
@@ -25,28 +26,59 @@ class StudentRepository {
     final value = query.trim();
     if (value.isNotEmpty) {
       conditions.add(
-        '(full_name LIKE ? OR name_with_initials LIKE ? OR nic LIKE ? OR phone_number LIKE ?)',
+        '(students.full_name LIKE ? OR students.name_with_initials LIKE ? OR students.nic LIKE ? OR students.phone_number LIKE ?)',
       );
       final pattern = '%$value%';
       arguments.addAll([pattern, pattern, pattern, pattern]);
     }
     if (status != null) {
-      conditions.add('status = ?');
-      arguments.add(status);
+      if (status == 'active') {
+        conditions.add(
+          "students.status = 'student' AND students.is_active = 1",
+        );
+      } else if (status == 'inactive') {
+        conditions.add(
+          "students.status = 'student' AND students.is_active = 0",
+        );
+      } else {
+        conditions.add('students.status = ?');
+        arguments.add(status);
+      }
+    }
+    if (batchId != null) {
+      conditions.add(
+        'membership.batch_id = ? AND membership.is_current = 1',
+      );
+      arguments.add(batchId);
     }
     if (startDate != null) {
-      conditions.add('joined_date >= ?');
+      conditions.add('students.joined_date >= ?');
       arguments.add(_storageDate(startDate));
     }
     if (endDate != null) {
-      conditions.add('joined_date <= ?');
+      conditions.add('students.joined_date <= ?');
       arguments.add(_storageDate(endDate));
     }
-    return database.query(
-      'students',
-      where: conditions.isEmpty ? null : conditions.join(' AND '),
-      whereArgs: arguments.isEmpty ? null : arguments,
-      orderBy: 'full_name COLLATE NOCASE',
+    final where = conditions.isEmpty
+        ? ''
+        : 'WHERE ${conditions.join(' AND ')}';
+    return database.rawQuery(
+      '''
+      SELECT students.*,
+        batches.id AS batch_id,
+        batches.batch_name,
+        history.academic_year,
+        history.grade
+      FROM students
+      LEFT JOIN student_batch_history membership
+        ON membership.student_id = students.id AND membership.is_current = 1
+      LEFT JOIN batches ON batches.id = membership.batch_id
+      LEFT JOIN batch_history history
+        ON history.id = membership.batch_history_id
+      $where
+      ORDER BY students.full_name COLLATE NOCASE
+      ''',
+      arguments.isEmpty ? null : arguments,
     );
   }
 

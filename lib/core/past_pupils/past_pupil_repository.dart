@@ -13,10 +13,35 @@ class PastPupilRepository {
   Future<List<Map<String, Object?>>> listBatches({
     required Database database,
     required int adminId,
+    String query = '',
+    int? yearCompleted,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
     await _requireAdmin(database, adminId);
+    final conditions = <String>[];
+    final arguments = <Object?>[];
+    final value = query.trim();
+    if (value.isNotEmpty) {
+      conditions.add('batch_name LIKE ?');
+      arguments.add('%$value%');
+    }
+    if (yearCompleted != null) {
+      conditions.add('year_completed = ?');
+      arguments.add(yearCompleted);
+    }
+    if (startDate != null) {
+      conditions.add('year_completed >= ?');
+      arguments.add(startDate.year);
+    }
+    if (endDate != null) {
+      conditions.add('year_completed <= ?');
+      arguments.add(endDate.year);
+    }
     return database.query(
       'past_pupil_batches',
+      where: conditions.isEmpty ? null : conditions.join(' AND '),
+      whereArgs: arguments.isEmpty ? null : arguments,
       orderBy: 'year_completed DESC, batch_name COLLATE NOCASE',
     );
   }

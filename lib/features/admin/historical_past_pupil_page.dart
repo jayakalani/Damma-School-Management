@@ -25,6 +25,10 @@ class HistoricalPastPupilPage extends StatefulWidget {
 
 class _HistoricalPastPupilPageState extends State<HistoricalPastPupilPage> {
   final repository = PastPupilRepository();
+  final search = TextEditingController();
+  final yearCompleted = TextEditingController();
+  DateTime? startDate;
+  DateTime? endDate;
   late Future<List<Map<String, Object?>>> batches;
 
   int get adminId => widget.auth.currentSession!.userId;
@@ -35,11 +39,64 @@ class _HistoricalPastPupilPageState extends State<HistoricalPastPupilPage> {
     reload();
   }
 
+  @override
+  void dispose() {
+    search.dispose();
+    yearCompleted.dispose();
+    super.dispose();
+  }
+
   void reload() {
     batches = repository.listBatches(
       database: widget.database,
       adminId: adminId,
+      query: search.text,
+      yearCompleted: int.tryParse(yearCompleted.text.trim()),
+      startDate: startDate,
+      endDate: endDate,
     );
+  }
+
+  void refreshList() => setState(reload);
+
+  void _resetFilters() {
+    setState(() {
+      search.clear();
+      yearCompleted.clear();
+      startDate = null;
+      endDate = null;
+      reload();
+    });
+  }
+
+  Future<void> chooseStart() async {
+    final value = await showDatePicker(
+      context: context,
+      firstDate: DateTime(1950),
+      lastDate: DateTime(2200),
+      initialDate: startDate ?? DateTime.now(),
+    );
+    if (value != null) {
+      setState(() {
+        startDate = value;
+        reload();
+      });
+    }
+  }
+
+  Future<void> chooseEnd() async {
+    final value = await showDatePicker(
+      context: context,
+      firstDate: DateTime(1950),
+      lastDate: DateTime(2200),
+      initialDate: endDate ?? DateTime.now(),
+    );
+    if (value != null) {
+      setState(() {
+        endDate = value;
+        reload();
+      });
+    }
   }
 
   Future<void> addBatch() async {
@@ -149,6 +206,71 @@ class _HistoricalPastPupilPageState extends State<HistoricalPastPupilPage> {
                 ),
                 const SizedBox(height: 16),
                 GlassPanel(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final maxWidth = constraints.maxWidth;
+                      final compact = maxWidth < 720;
+                      final searchWidth = compact ? maxWidth : 240.0;
+                      final yearWidth = compact ? maxWidth : 160.0;
+
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: searchWidth,
+                            child: TextField(
+                              controller: search,
+                              onChanged: (_) => refreshList(),
+                              decoration: glassInputDecoration(
+                                context,
+                                hint: 'Search by name...',
+                                prefixIcon: Icons.search_rounded,
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: yearWidth,
+                            child: TextField(
+                              controller: yearCompleted,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => refreshList(),
+                              decoration: glassInputDecoration(
+                                context,
+                                hint: 'Year completed',
+                                prefixIcon: Icons.calendar_today_outlined,
+                              ),
+                            ),
+                          ),
+                          _GlassDateButton(
+                            label: startDate == null
+                                ? 'From date'
+                                : _dateLabel(startDate!),
+                            onPressed: chooseStart,
+                          ),
+                          _GlassDateButton(
+                            label: endDate == null
+                                ? 'To date'
+                                : _dateLabel(endDate!),
+                            onPressed: chooseEnd,
+                          ),
+                          GlassActionButton(
+                            label: 'Apply',
+                            filled: true,
+                            onPressed: refreshList,
+                          ),
+                          GlassActionButton(
+                            label: 'Reset',
+                            onPressed: _resetFilters,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+                GlassPanel(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -240,6 +362,62 @@ class _HistoricalPastPupilPageState extends State<HistoricalPastPupilPage> {
           backgroundColor: error ? Theme.of(context).colorScheme.error : null,
         ),
       );
+}
+
+String _dateLabel(DateTime value) =>
+    '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
+class _GlassDateButton extends StatefulWidget {
+  const _GlassDateButton({
+    required this.label,
+    required this.onPressed,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  State<_GlassDateButton> createState() => _GlassDateButtonState();
+}
+
+class _GlassDateButtonState extends State<_GlassDateButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        scale: _hovered ? 1.03 : 1,
+        duration: const Duration(milliseconds: 180),
+        child: OutlinedButton.icon(
+          onPressed: widget.onPressed,
+          icon: Icon(
+            Icons.event_rounded,
+            size: 18,
+            color: accent.withValues(alpha: _hovered ? 0.9 : 0.75),
+          ),
+          label: Text(widget.label),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: accent,
+            side: BorderSide(
+              color: accent.withValues(alpha: _hovered ? 0.6 : 0.35),
+            ),
+            backgroundColor: _hovered
+                ? accent.withValues(alpha: 0.06)
+                : Colors.white.withValues(alpha: 0.45),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class LegacyBatchEditorValues {

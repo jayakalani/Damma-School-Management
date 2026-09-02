@@ -20,10 +20,33 @@ class TeacherQualification {
 }
 
 class Batch {
-  const Batch({this.id, required this.batchName, required this.startingYear, required this.createdAt, required this.updatedAt});
-  final int? id, startingYear; final String batchName, createdAt, updatedAt;
-  factory Batch.fromMap(Map<String, Object?> m) => Batch(id: m['id'] as int?, batchName: m['batch_name']! as String, startingYear: m['starting_year']! as int, createdAt: m['created_at']! as String, updatedAt: m['updated_at']! as String);
-  Map<String, Object?> toMap() => {'id': id, 'batch_name': batchName, 'starting_year': startingYear, 'created_at': createdAt, 'updated_at': updatedAt};
+  const Batch({
+    this.id,
+    required this.batchName,
+    required this.startingYear,
+    this.isActive = true,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  final int? id, startingYear;
+  final String batchName, createdAt, updatedAt;
+  final bool isActive;
+  factory Batch.fromMap(Map<String, Object?> m) => Batch(
+    id: m['id'] as int?,
+    batchName: m['batch_name']! as String,
+    startingYear: m['starting_year']! as int,
+    isActive: (m['is_active'] ?? 1) == 1,
+    createdAt: m['created_at']! as String,
+    updatedAt: m['updated_at']! as String,
+  );
+  Map<String, Object?> toMap() => {
+    'id': id,
+    'batch_name': batchName,
+    'starting_year': startingYear,
+    'is_active': isActive ? 1 : 0,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+  };
 }
 
 class BatchHistory {
@@ -55,10 +78,33 @@ class BatchTeacherHistory {
 }
 
 class Examination {
-  const Examination({this.id, required this.batchHistoryId, required this.examinationName, required this.examinationDate, required this.totalMarks, required this.createdAt, required this.updatedAt});
-  final int? id, batchHistoryId; final String examinationName, examinationDate, createdAt, updatedAt; final num totalMarks;
-  factory Examination.fromMap(Map<String, Object?> m) => Examination(id: m['id'] as int?, batchHistoryId: m['batch_history_id']! as int, examinationName: m['examination_name']! as String, examinationDate: m['examination_date']! as String, totalMarks: m['total_marks']! as num, createdAt: m['created_at']! as String, updatedAt: m['updated_at']! as String);
-  Map<String, Object?> toMap() => {'id': id, 'batch_history_id': batchHistoryId, 'examination_name': examinationName, 'examination_date': examinationDate, 'total_marks': totalMarks, 'created_at': createdAt, 'updated_at': updatedAt};
+  const Examination({
+    this.id,
+    required this.examinationName,
+    required this.examinationDate,
+    required this.totalMarks,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  final int? id;
+  final String examinationName, examinationDate, createdAt, updatedAt;
+  final num totalMarks;
+  factory Examination.fromMap(Map<String, Object?> m) => Examination(
+    id: m['id'] as int?,
+    examinationName: m['examination_name']! as String,
+    examinationDate: m['examination_date']! as String,
+    totalMarks: m['total_marks']! as num,
+    createdAt: m['created_at']! as String,
+    updatedAt: m['updated_at']! as String,
+  );
+  Map<String, Object?> toMap() => {
+    'id': id,
+    'examination_name': examinationName,
+    'examination_date': examinationDate,
+    'total_marks': totalMarks,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+  };
 }
 
 class ExamResult {

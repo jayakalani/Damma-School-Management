@@ -1,11 +1,15 @@
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../app/widgets/glass_admin_ui.dart';
 import '../../core/batches/batch_repository.dart';
+import '../../core/export/batch_export_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/teachers/teacher_repository.dart';
 import '../../core/utils/error_messages.dart';
+import 'examination_management_page.dart';
 
 class BatchManagementPage extends StatefulWidget {
   const BatchManagementPage({
@@ -97,6 +101,25 @@ class _BatchManagementPageState extends State<BatchManagementPage> {
     } catch (error) {
       _message(
         userFacingError(error, fallback: 'Unable to update the batch.'),
+        error: true,
+      );
+    }
+  }
+
+  Future<void> toggleBatchStatus(Map<String, Object?> batch) async {
+    final active = _isBatchActive(batch);
+    try {
+      await repository.setBatchActive(
+        database: widget.database,
+        adminId: adminId,
+        batchId: batch['id']! as int,
+        active: !active,
+      );
+      _message(active ? 'Batch deactivated.' : 'Batch activated.');
+      refreshList();
+    } catch (error) {
+      _message(
+        userFacingError(error, fallback: 'Unable to change batch status.'),
         error: true,
       );
     }
@@ -255,6 +278,7 @@ class _BatchManagementPageState extends State<BatchManagementPage> {
                             'BATCH NAME',
                             'STARTING YEAR',
                             'CURRENT',
+                            'STATUS',
                             'ACTIONS',
                           ],
                         ),
@@ -301,6 +325,14 @@ class _BatchManagementPageState extends State<BatchManagementPage> {
                                     child: Text(
                                       '${batch['academic_year'] ?? '-'} · Grade ${batch['grade'] ?? '-'}',
                                       overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: _BatchActiveToggle(
+                                      active: _isBatchActive(batch),
+                                      onChanged: () =>
+                                          toggleBatchStatus(batch),
                                     ),
                                   ),
                                   Expanded(
@@ -351,6 +383,47 @@ class _BatchManagementPageState extends State<BatchManagementPage> {
       );
 }
 
+bool _isBatchActive(Map<String, Object?> batch) =>
+    (batch['is_active'] ?? 1) == 1;
+
+class _BatchActiveToggle extends StatelessWidget {
+  const _BatchActiveToggle({
+    required this.active,
+    required this.onChanged,
+  });
+
+  final bool active;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Switch(
+          value: active,
+          onChanged: (_) => onChanged(),
+          activeTrackColor: const Color(0xFF16A34A).withValues(alpha: 0.55),
+          activeThumbColor: const Color(0xFF16A34A),
+          inactiveTrackColor: Colors.grey.shade400.withValues(alpha: 0.5),
+          inactiveThumbColor: Colors.grey.shade600,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          active ? 'Active' : 'Inactive',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: active
+                    ? const Color(0xFF16A34A)
+                    : Colors.grey.shade600,
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
 class BatchDetailsPage extends StatefulWidget {
   const BatchDetailsPage({
     super.key,
@@ -370,6 +443,7 @@ class BatchDetailsPage extends StatefulWidget {
 class _BatchDetailsPageState extends State<BatchDetailsPage> {
   final repository = BatchRepository();
   final teacherRepository = TeacherRepository();
+  final exportService = const BatchExportService();
   late Future<BatchDetails> details;
 
   int get adminId => widget.auth.currentSession!.userId;
@@ -470,140 +544,160 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
     }
   }
 
+  Future<void> openExamination(int examinationId) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MarksEntryPage(
+          database: widget.database,
+          auth: widget.auth,
+          examinationId: examinationId,
+          batchId: widget.batchId,
+        ),
+      ),
+    );
+    if (mounted) reload();
+  }
+
+  String _exportTimestamp() {
+    final now = DateTime.now();
+    return '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_'
+        '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _exportFileStem(BatchDetails data) {
+    final name = (data.batch['batch_name']! as String)
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+    return 'batch_${name.isEmpty ? widget.batchId : name}_${_exportTimestamp()}';
+  }
+
+  Future<void> _exportCsv(BatchDetails data) async {
+    if (kIsWeb) {
+      _message('Export is available in the desktop app.', error: true);
+      return;
+    }
+    try {
+      final location = await getSaveLocation(
+        suggestedName: '${_exportFileStem(data)}.csv',
+        acceptedTypeGroups: const [
+          XTypeGroup(label: 'CSV', extensions: ['csv']),
+        ],
+      );
+      if (location == null || !mounted) return;
+      await exportService.writeTextFile(
+        path: location.path,
+        contents: exportService.buildCsv(data),
+      );
+      _message('Batch CSV exported.');
+    } catch (_) {
+      _message('Unable to export batch CSV.', error: true);
+    }
+  }
+
+  Future<void> _exportPdf(BatchDetails data) async {
+    if (kIsWeb) {
+      _message('Export is available in the desktop app.', error: true);
+      return;
+    }
+    try {
+      final location = await getSaveLocation(
+        suggestedName: '${_exportFileStem(data)}.pdf',
+        acceptedTypeGroups: const [
+          XTypeGroup(label: 'PDF', extensions: ['pdf']),
+        ],
+      );
+      if (location == null || !mounted) return;
+      final bytes = await exportService.buildPdf(data);
+      await exportService.writeBytesFile(path: location.path, bytes: bytes);
+      _message('Batch PDF exported.');
+    } catch (_) {
+      _message('Unable to export batch PDF.', error: true);
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Batch Details')),
-    body: FutureBuilder<BatchDetails>(
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+
+    return FutureBuilder<BatchDetails>(
       future: details,
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return Center(
-            child: snapshot.hasError
-                ? const Text('Unable to load batch details.')
-                : const CircularProgressIndicator(),
-          );
+        final batchName =
+            snapshot.data?.batch['batch_name'] as String? ?? 'Batch Details';
+        String subtitle = 'Batch overview and membership';
+        if (snapshot.hasData) {
+          final data = snapshot.data!;
+          if (data.history.isNotEmpty) {
+            final current = data.history.lastWhere(
+              (row) => row['is_current'] == 1,
+              orElse: () => data.history.last,
+            );
+            subtitle =
+                'Started ${data.batch['starting_year']} · '
+                '${current['academic_year']} · Grade ${current['grade']}';
+          } else {
+            subtitle = 'Started ${data.batch['starting_year']}';
+          }
         }
 
-        final data = snapshot.data!;
-        final current = data.history.lastWhere(
-          (row) => row['is_current'] == 1,
-          orElse: () => data.history.last,
-        );
-
-        return ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    data.batch['batch_name']! as String,
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
+        return GlassAdminPage(
+          title: batchName,
+          subtitle: subtitle,
+          toolbar: snapshot.hasData
+              ? Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    GlassToolbarButton(
+                      label: 'Export CSV',
+                      icon: Icons.table_chart_outlined,
+                      accent: const Color(0xFF16A34A),
+                      onPressed: () => _exportCsv(snapshot.data!),
+                    ),
+                    GlassToolbarButton(
+                      label: 'Export PDF',
+                      icon: Icons.picture_as_pdf_outlined,
+                      accent: const Color(0xFFE11D48),
+                      onPressed: () => _exportPdf(snapshot.data!),
+                    ),
+                    GlassToolbarButton(
+                      label: 'Promote Batch',
+                      icon: Icons.upgrade_rounded,
+                      accent: accent,
+                      onPressed: () => promote(snapshot.data!),
+                    ),
+                  ],
+                )
+              : null,
+          body: !snapshot.hasData
+              ? Center(
+                  child: snapshot.hasError
+                      ? Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            userFacingError(
+                              snapshot.error!,
+                              fallback: 'Unable to load batch details.',
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      : const CircularProgressIndicator(),
+                )
+              : _BatchDetailsBody(
+                  data: snapshot.data!,
+                  accent: accent,
+                  onAddStudent: addStudent,
+                  onAssignTeacher: () => assignTeacher(snapshot.data!),
+                  onOpenExamination: openExamination,
                 ),
-                FilledButton.icon(
-                  onPressed: () => promote(data),
-                  icon: const Icon(Icons.upgrade),
-                  label: const Text('Promote Batch'),
-                ),
-              ],
-            ),
-            Text('Starting year: ${data.batch['starting_year']}'),
-            Text(
-              'Current: ${current['academic_year']} | Grade ${current['grade']}',
-            ),
-            const SizedBox(height: 24),
-            _Section(
-              title: 'Batch History',
-              children: [
-                for (final row in data.history)
-                  ListTile(
-                    leading: Icon(
-                      row['is_current'] == 1
-                          ? Icons.radio_button_checked
-                          : Icons.history,
-                    ),
-                    title: Text(
-                      'Academic year ${row['academic_year']} - Grade ${row['grade']}',
-                    ),
-                    subtitle: Text(
-                      'Started ${row['started_date']}${row['ended_date'] == null ? '' : ' | Ended ${row['ended_date']}'}',
-                    ),
-                  ),
-              ],
-            ),
-            _Section(
-              title: 'Students',
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: addStudent,
-                      icon: const Icon(Icons.person_add_outlined),
-                      label: const Text('Add Student'),
-                    ),
-                  ),
-                ),
-                if (data.students.isEmpty)
-                  const ListTile(title: Text('No students assigned.'))
-                else
-                  for (final row in data.students)
-                    ListTile(
-                      title: Text(row['full_name']! as String),
-                      subtitle: Text(
-                        '${row['is_current'] == 1 ? 'Current' : 'Historical'} | Joined ${row['joined_date']}${row['left_date'] == null ? '' : ' | Left ${row['left_date']}'}',
-                      ),
-                    ),
-              ],
-            ),
-            _Section(
-              title: 'Teachers',
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () => assignTeacher(data),
-                      icon: const Icon(Icons.person_add_alt_1_outlined),
-                      label: const Text('Assign Class Teacher'),
-                    ),
-                  ),
-                ),
-                if (data.teachers.isEmpty)
-                  const ListTile(title: Text('No teachers assigned.'))
-                else
-                  for (final row in data.teachers)
-                    ListTile(
-                      title: Text(row['full_name']! as String),
-                      subtitle: Text(
-                        '${row['is_current'] == 1 ? 'Current' : 'Historical'} | Assigned ${row['assigned_date']}${row['removed_date'] == null ? '' : ' | Removed ${row['removed_date']}'}',
-                      ),
-                    ),
-              ],
-            ),
-            _Section(
-              title: 'Examinations',
-              children: [
-                if (data.examinations.isEmpty)
-                  const ListTile(title: Text('No examinations recorded.'))
-                else
-                  for (final row in data.examinations)
-                    ListTile(
-                      title: Text(row['examination_name']! as String),
-                      subtitle: Text(
-                        '${row['examination_date']} | ${row['academic_year']} - Grade ${row['grade']}',
-                      ),
-                    ),
-              ],
-            ),
-          ],
         );
       },
-    ),
-  );
+    );
+  }
 
   void _message(String text, {bool error = false}) =>
       ScaffoldMessenger.of(context).showSnackBar(
@@ -614,26 +708,492 @@ class _BatchDetailsPageState extends State<BatchDetailsPage> {
       );
 }
 
-class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
+class _BatchDetailsBody extends StatelessWidget {
+  const _BatchDetailsBody({
+    required this.data,
+    required this.accent,
+    required this.onAddStudent,
+    required this.onAssignTeacher,
+    required this.onOpenExamination,
+  });
 
-  final String title;
-  final List<Widget> children;
+  final BatchDetails data;
+  final Color accent;
+  final VoidCallback onAddStudent;
+  final VoidCallback onAssignTeacher;
+  final ValueChanged<int> onOpenExamination;
 
   @override
-  Widget build(BuildContext context) => Card(
-    margin: const EdgeInsets.only(bottom: 16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final currentStudents =
+        data.students.where((row) => row['is_current'] == 1).length;
+    final currentTeachers =
+        data.teachers.where((row) => row['is_current'] == 1).length;
+    final isActive = (data.batch['is_active'] ?? 1) == 1;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          glassSummaryGrid(
+            context: context,
+            accent: accent,
+            columns: 4,
+            cards: [
+              GlassSummaryStatCard(
+                label: 'Students',
+                value: '$currentStudents',
+                valueColor: const Color(0xFF2563EB),
+                accentColor: const Color(0xFF2563EB),
+                dense: true,
+              ),
+              GlassSummaryStatCard(
+                label: 'Teachers',
+                value: '$currentTeachers',
+                valueColor: const Color(0xFF16A34A),
+                accentColor: const Color(0xFF16A34A),
+                dense: true,
+              ),
+              GlassSummaryStatCard(
+                label: 'History Years',
+                value: '${data.history.length}',
+                valueColor: const Color(0xFF7C3AED),
+                accentColor: const Color(0xFF7C3AED),
+                dense: true,
+              ),
+              GlassSummaryStatCard(
+                label: 'Examinations',
+                value: '${data.examinations.length}',
+                valueColor: theme.colorScheme.onSurface,
+                accentColor: accent,
+                dense: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          GlassPanel(
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.groups_rounded, color: accent),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        data.batch['batch_name']! as String,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Starting year ${data.batch['starting_year']}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _StatusBadge(
+                  label: isActive ? 'Active' : 'Inactive',
+                  color: isActive
+                      ? const Color(0xFF16A34A)
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          GlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GlassDirectoryHeader(
+                  title: 'Batch History',
+                  icon: Icons.timeline_rounded,
+                  countLabel: '${data.history.length} year(s)',
+                ),
+                const SizedBox(height: 16),
+                if (data.history.isEmpty)
+                  const GlassEmptyState(
+                    icon: Icons.timeline_outlined,
+                    message: 'No academic history recorded.',
+                  )
+                else
+                  for (final row in data.history)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: GlassListRow(
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: row['is_current'] == 1
+                                    ? accent.withValues(alpha: 0.12)
+                                    : theme.colorScheme.onSurfaceVariant
+                                        .withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                row['is_current'] == 1
+                                    ? Icons.radio_button_checked_rounded
+                                    : Icons.history_rounded,
+                                size: 18,
+                                color: row['is_current'] == 1
+                                    ? accent
+                                    : theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Academic year ${row['academic_year']} · Grade ${row['grade']}',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    [
+                                      'Started ${_formatDisplayDate(row['started_date'] as String?)}',
+                                      if (row['ended_date'] != null)
+                                        'Ended ${_formatDisplayDate(row['ended_date'] as String?)}',
+                                    ].join(' · '),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (row['is_current'] == 1)
+                              const _StatusBadge(
+                                label: 'Current',
+                                color: Color(0xFF16A34A),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          GlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _SectionToolbar(
+                  title: 'Students',
+                  icon: Icons.school_outlined,
+                  countLabel: '${data.students.length} total',
+                  action: GlassActionChipButton(
+                    label: 'Add Student',
+                    color: accent,
+                    onPressed: onAddStudent,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (data.students.isEmpty)
+                  const GlassEmptyState(
+                    icon: Icons.school_outlined,
+                    message: 'No students assigned.',
+                  )
+                else
+                  for (final row in data.students)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: GlassListRow(
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    row['full_name']! as String,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    [
+                                      'Joined ${_formatDisplayDate(row['joined_date'] as String?)}',
+                                      if (row['left_date'] != null)
+                                        'Left ${_formatDisplayDate(row['left_date'] as String?)}',
+                                    ].join(' · '),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            _StatusBadge(
+                              label: row['is_current'] == 1
+                                  ? 'Current'
+                                  : 'Historical',
+                              color: row['is_current'] == 1
+                                  ? const Color(0xFF16A34A)
+                                  : theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          GlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _SectionToolbar(
+                  title: 'Teachers',
+                  icon: Icons.person_outline_rounded,
+                  countLabel: '${data.teachers.length} total',
+                  action: GlassActionChipButton(
+                    label: 'Assign Teacher',
+                    color: accent,
+                    onPressed: onAssignTeacher,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (data.teachers.isEmpty)
+                  const GlassEmptyState(
+                    icon: Icons.person_outline_rounded,
+                    message: 'No teachers assigned.',
+                  )
+                else
+                  for (final row in data.teachers)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: GlassListRow(
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    row['full_name']! as String,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    [
+                                      'Assigned ${_formatDisplayDate(row['assigned_date'] as String?)}',
+                                      if (row['removed_date'] != null)
+                                        'Removed ${_formatDisplayDate(row['removed_date'] as String?)}',
+                                    ].join(' · '),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            _StatusBadge(
+                              label: row['is_current'] == 1
+                                  ? 'Current'
+                                  : 'Historical',
+                              color: row['is_current'] == 1
+                                  ? const Color(0xFF16A34A)
+                                  : theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          GlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GlassDirectoryHeader(
+                  title: 'Examinations',
+                  icon: Icons.quiz_outlined,
+                  countLabel: '${data.examinations.length} recorded',
+                ),
+                const SizedBox(height: 16),
+                if (data.examinations.isEmpty)
+                  const GlassEmptyState(
+                    icon: Icons.quiz_outlined,
+                    message: 'No examinations recorded.',
+                  )
+                else
+                  for (final row in data.examinations)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: GlassListRow(
+                        onTap: () => onOpenExamination(row['id']! as int),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    row['examination_name']! as String,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _formatDisplayDate(
+                                      row['examination_date'] as String?,
+                                    ),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              '${row['total_marks']} marks',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionToolbar extends StatelessWidget {
+  const _SectionToolbar({
+    required this.title,
+    required this.icon,
+    required this.countLabel,
+    required this.action,
+  });
+
+  final String title;
+  final IconData icon;
+  final String countLabel;
+  final Widget action;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+
+    return Row(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+        Icon(icon, color: accent, size: 22),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
-        ...children,
+        const SizedBox(width: 10),
+        Text(
+          countLabel,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const Spacer(),
+        action,
       ],
-    ),
-  );
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+}
+
+String _formatDisplayDate(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return '-';
+  final parsed = DateTime.tryParse(raw);
+  if (parsed == null) return raw;
+  final local = parsed.toLocal();
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${months[local.month - 1]} ${local.day}, ${local.year}';
 }
 
 class BatchEditorValues {

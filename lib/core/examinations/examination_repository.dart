@@ -11,20 +11,6 @@ class ExaminationRepository {
 
   final AuditLogRepository _auditLogs;
 
-  Future<List<Map<String, Object?>>> listBatchYears({
-    required Database database,
-    required int adminId,
-  }) async {
-    await AccessControl.requireActiveAdminOrStaff(
-      database,
-      adminId,
-      action: 'manage examinations',
-    );
-    return database.rawQuery(
-      'SELECT history.*, batches.batch_name FROM batch_history history INNER JOIN batches ON batches.id = history.batch_id ORDER BY history.academic_year DESC, batches.batch_name COLLATE NOCASE',
-    );
-  }
-
   Future<List<Map<String, Object?>>> listExaminations({
     required Database database,
     required int adminId,
@@ -34,50 +20,104 @@ class ExaminationRepository {
       adminId,
       action: 'manage examinations',
     );
-    return database.rawQuery(
-      'SELECT examinations.*, history.batch_id, history.academic_year, history.grade, batches.batch_name FROM examinations INNER JOIN batch_history history ON history.id = examinations.batch_history_id INNER JOIN batches ON batches.id = history.batch_id ORDER BY examinations.examination_date DESC, examinations.id DESC',
+    return database.query(
+      'examinations',
+      orderBy: 'examination_date DESC, id DESC',
     );
   }
 
-  Future<ExaminationDetails> getDetails({
+  Future<List<Map<String, Object?>>> listActiveBatches({
     required Database database,
     required int adminId,
-    required int examinationId,
   }) async {
     await AccessControl.requireActiveAdminOrStaff(
       database,
       adminId,
       action: 'manage examinations',
     );
-    final exams = await database.rawQuery(
-      'SELECT examinations.*, history.batch_id, history.academic_year, history.grade, batches.batch_name FROM examinations INNER JOIN batch_history history ON history.id = examinations.batch_history_id INNER JOIN batches ON batches.id = history.batch_id WHERE examinations.id = ?',
-      [examinationId],
+    return database.rawQuery('''
+      SELECT batches.id, batches.batch_name, batches.starting_year,
+        history.id AS batch_history_id, history.academic_year, history.grade
+      FROM batches
+      INNER JOIN batch_history history
+        ON history.batch_id = batches.id AND history.is_current = 1
+      WHERE batches.is_active = 1
+      ORDER BY batches.batch_name COLLATE NOCASE
+    ''');
+  }
+
+  Future<ExaminationDetails> getDetails({
+    required Database database,
+    required int adminId,
+    required int examinationId,
+    required int batchId,
+  }) async {
+    await AccessControl.requireActiveAdminOrStaff(
+      database,
+      adminId,
+      action: 'manage examinations',
+    );
+    final exams = await database.query(
+      'examinations',
+      where: 'id = ?',
+      whereArgs: [examinationId],
+      limit: 1,
     );
     if (exams.isEmpty) throw StateError('Examination not found.');
-    final exam = exams.single;
+
+    final batches = await database.rawQuery(
+      '''
+      SELECT batches.id AS batch_id, batches.batch_name, batches.is_active,
+        history.id AS batch_history_id, history.academic_year, history.grade,
+        history.is_current
+      FROM batches
+      INNER JOIN batch_history history
+        ON history.batch_id = batches.id AND history.is_current = 1
+      WHERE batches.id = ?
+      ''',
+      [batchId],
+    );
+    if (batches.isEmpty) throw StateError('Batch not found.');
+    final batch = batches.single;
+    if (batch['is_active'] != 1) {
+      throw StateError('Only active batches can enter examination marks.');
+    }
+
     final students = await database.rawQuery(
       '''
-      SELECT students.id, students.full_name, students.name_with_initials,
+      SELECT DISTINCT students.id, students.full_name, students.name_with_initials,
         results.id AS result_id, results.attendance_status, results.marks
       FROM student_batch_history membership
       INNER JOIN students ON students.id = membership.student_id
-      LEFT JOIN exam_results results ON results.student_id = students.id AND results.examination_id = ?
-      WHERE membership.batch_history_id = ? AND membership.is_current = 1 AND students.status = 'student'
+      LEFT JOIN exam_results results
+        ON results.student_id = students.id AND results.examination_id = ?
+      WHERE students.status = 'student'
+        AND membership.is_current = 1
+        AND membership.batch_id = ?
       ORDER BY students.full_name COLLATE NOCASE
     ''',
-      [examinationId, exam['batch_history_id']],
+      [examinationId, batchId],
     );
+
+    final exam = Map<String, Object?>.from(exams.single)
+      ..addAll({
+        'batch_id': batch['batch_id'],
+        'batch_name': batch['batch_name'],
+        'batch_history_id': batch['batch_history_id'],
+        'academic_year': batch['academic_year'],
+        'grade': batch['grade'],
+      });
+
     return ExaminationDetails(
       examination: exam,
       students: students,
-      analytics: _analytics(students),
+      analytics: analyticsFromRows(students),
     );
   }
 
   Future<int> createExamination({
     required Database database,
     required int adminId,
-    required int batchHistoryId,
     required String name,
     required String date,
     required num totalMarks,
@@ -93,16 +133,7 @@ class ExaminationRepository {
         adminId,
         action: 'create examinations',
       );
-      final histories = await transaction.query(
-        'batch_history',
-        columns: ['id'],
-        where: 'id = ?',
-        whereArgs: [batchHistoryId],
-        limit: 1,
-      );
-      if (histories.isEmpty) throw StateError('Batch academic year not found.');
       final id = await transaction.insert('examinations', {
-        'batch_history_id': batchHistoryId,
         'examination_name': name.trim(),
         'examination_date': date.trim(),
         'total_marks': totalMarks,
@@ -126,6 +157,7 @@ class ExaminationRepository {
     required Database database,
     required int adminId,
     required int examinationId,
+    required int batchId,
     required List<ExamMarkInput> results,
   }) async {
     await database.transaction((transaction) async {
@@ -136,24 +168,37 @@ class ExaminationRepository {
       );
       final exams = await transaction.query(
         'examinations',
-        columns: ['id', 'batch_history_id', 'total_marks'],
+        columns: ['id', 'total_marks'],
         where: 'id = ?',
         whereArgs: [examinationId],
         limit: 1,
       );
       if (exams.isEmpty) throw StateError('Examination not found.');
       final exam = exams.single;
+
+      final batches = await transaction.query(
+        'batches',
+        columns: ['id', 'is_active'],
+        where: 'id = ?',
+        whereArgs: [batchId],
+        limit: 1,
+      );
+      if (batches.isEmpty) throw StateError('Batch not found.');
+      if (batches.single['is_active'] != 1) {
+        throw StateError('Only active batches can enter examination marks.');
+      }
+
       final roster = await transaction.query(
         'student_batch_history',
         columns: ['student_id'],
-        where: 'batch_history_id = ? AND is_current = 1',
-        whereArgs: [exam['batch_history_id']],
+        where: 'batch_id = ? AND is_current = 1',
+        whereArgs: [batchId],
       );
       final rosterIds = roster.map((row) => row['student_id']! as int).toSet();
       final now = _now();
       for (final result in results) {
         if (!rosterIds.contains(result.studentId)) {
-          throw StateError('Student is not in this batch academic year.');
+          throw StateError('Student is not in this batch.');
         }
         if (result.attendanceStatus != 'present' &&
             result.attendanceStatus != 'absent') {
@@ -210,18 +255,40 @@ class ExaminationRepository {
     });
   }
 
-  ExaminationAnalytics _analytics(List<Map<String, Object?>> students) {
-    final present =
-        students
-            .where(
-              (row) =>
-                  row['attendance_status'] == 'present' && row['marks'] != null,
-            )
-            .toList()
-          ..sort((a, b) => (b['marks']! as num).compareTo(a['marks']! as num));
-    final absent = students
-        .where((row) => row['attendance_status'] == 'absent')
-        .length;
+  /// Builds analytics from saved result rows or live mark-entry values.
+  ///
+  /// Each row should include `id`, `full_name`, and either:
+  /// - `attendance_status` / `marks` (persisted results), or
+  /// - `entry` text where a number means present and `Ab` means absent.
+  ExaminationAnalytics analyticsFromRows(List<Map<String, Object?>> students) {
+    final present = <Map<String, Object?>>[];
+    var absent = 0;
+    for (final row in students) {
+      final entry = row['entry']?.toString();
+      if (entry != null) {
+        final parsed = parseMarkEntry(entry);
+        if (parsed == null) continue;
+        if (parsed.absent) {
+          absent++;
+        } else {
+          present.add({
+            'id': row['id'],
+            'full_name': row['full_name'],
+            'marks': parsed.marks,
+          });
+        }
+        continue;
+      }
+      if (row['attendance_status'] == 'absent') {
+        absent++;
+      } else if (row['attendance_status'] == 'present' &&
+          row['marks'] != null) {
+        present.add(row);
+      }
+    }
+    present.sort(
+      (a, b) => (b['marks']! as num).compareTo(a['marks']! as num),
+    );
     final marks = present.map((row) => row['marks']! as num).toList();
     final ranking = <ExamRanking>[];
     for (var index = 0; index < present.length; index++) {
@@ -250,6 +317,18 @@ class ExaminationRepository {
     );
   }
 
+  /// Parses a marks field value. Returns absent for `Ab` (any case).
+  static MarkEntryParse? parseMarkEntry(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return null;
+    if (value.toLowerCase() == 'ab') {
+      return const MarkEntryParse.absent();
+    }
+    final marks = num.tryParse(value);
+    if (marks == null) return null;
+    return MarkEntryParse.present(marks);
+  }
+
   String _now() => DateTime.now().toUtc().toIso8601String();
 }
 
@@ -272,6 +351,15 @@ class ExamMarkInput {
   });
   final int studentId;
   final String attendanceStatus;
+  final num? marks;
+}
+
+class MarkEntryParse {
+  const MarkEntryParse._({required this.absent, this.marks});
+  const MarkEntryParse.absent() : this._(absent: true);
+  const MarkEntryParse.present(num marks) : this._(absent: false, marks: marks);
+
+  final bool absent;
   final num? marks;
 }
 

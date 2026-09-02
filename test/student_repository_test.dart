@@ -49,10 +49,7 @@ void main() {
       batchId: batchId,
       studentId: studentId,
     );
-    final historyId =
-        (await connection.query('batch_history')).single['id']! as int;
     final examinationId = await connection.insert('examinations', {
-      'batch_history_id': historyId,
       'examination_name': 'Term 1',
       'examination_date': '2026-03-01',
       'total_marks': 100,
@@ -232,6 +229,86 @@ void main() {
     await database.close();
   });
 
+  test('filters students by current batch', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(
+      'file:student_batch_filter?mode=memory&cache=shared',
+    );
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final staffId = await _createStaff(connection, adminId);
+    final students = StudentRepository();
+    final batches = BatchRepository();
+    final first = await students.createStudent(
+      database: connection,
+      adminId: staffId,
+      details: {
+        'full_name': 'Batch One Student',
+        'name_with_initials': 'B. One',
+        'joined_date': '2026-01-01',
+      },
+    );
+    final second = await students.createStudent(
+      database: connection,
+      adminId: staffId,
+      details: {
+        'full_name': 'Batch Two Student',
+        'name_with_initials': 'B. Two',
+        'joined_date': '2026-01-01',
+      },
+    );
+    await batches.createBatch(
+      database: connection,
+      adminId: staffId,
+      name: 'Alpha',
+      startingYear: 2026,
+      startingGrade: 'Grade 1',
+    );
+    await batches.createBatch(
+      database: connection,
+      adminId: staffId,
+      name: 'Beta',
+      startingYear: 2026,
+      startingGrade: 'Grade 1',
+    );
+    final alphaId =
+        (await connection.query(
+              'batches',
+              where: 'batch_name = ?',
+              whereArgs: ['Alpha'],
+            )).single['id']!
+            as int;
+    final betaId =
+        (await connection.query(
+              'batches',
+              where: 'batch_name = ?',
+              whereArgs: ['Beta'],
+            )).single['id']!
+            as int;
+    await batches.addStudentToBatch(
+      database: connection,
+      adminId: adminId,
+      batchId: alphaId,
+      studentId: first,
+    );
+    await batches.addStudentToBatch(
+      database: connection,
+      adminId: adminId,
+      batchId: betaId,
+      studentId: second,
+    );
+
+    final filtered = await students.searchStudents(
+      database: connection,
+      adminId: adminId,
+      batchId: alphaId,
+    );
+    expect(filtered, hasLength(1));
+    expect(filtered.single['full_name'], 'Batch One Student');
+    expect(filtered.single['batch_name'], 'Alpha');
+    await database.close();
+  });
+
   test('toggles active status for enrolled students only', () async {
     sqfliteFfiInit();
     final database = AppDatabase(factory: databaseFactoryFfi);
@@ -293,6 +370,71 @@ void main() {
       ),
       throwsA(isA<StateError>()),
     );
+    await database.close();
+  });
+
+  test('filters students by active and inactive status', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(
+      'file:student_active_filter?mode=memory&cache=shared',
+    );
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final staffId = await _createStaff(connection, adminId);
+    final students = StudentRepository();
+    final activeId = await students.createStudent(
+      database: connection,
+      adminId: staffId,
+      details: {
+        'full_name': 'Active Student',
+        'name_with_initials': 'A. Student',
+        'joined_date': '2026-01-01',
+      },
+    );
+    final inactiveId = await students.createStudent(
+      database: connection,
+      adminId: staffId,
+      details: {
+        'full_name': 'Inactive Student',
+        'name_with_initials': 'I. Student',
+        'joined_date': '2026-01-01',
+      },
+    );
+    await students.createStudent(
+      database: connection,
+      adminId: staffId,
+      details: {
+        'full_name': 'Past Pupil Student',
+        'name_with_initials': 'P. Student',
+        'joined_date': '2026-01-01',
+      },
+    ).then(
+      (id) => students.convertToPastPupil(
+        database: connection,
+        adminId: adminId,
+        studentId: id,
+      ),
+    );
+    await students.setStudentActive(
+      database: connection,
+      adminId: adminId,
+      studentId: inactiveId,
+      active: false,
+    );
+
+    final activeOnly = await students.searchStudents(
+      database: connection,
+      adminId: adminId,
+      status: 'active',
+    );
+    expect(activeOnly.map((row) => row['id']), [activeId]);
+
+    final inactiveOnly = await students.searchStudents(
+      database: connection,
+      adminId: adminId,
+      status: 'inactive',
+    );
+    expect(inactiveOnly.map((row) => row['id']), [inactiveId]);
     await database.close();
   });
 

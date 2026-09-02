@@ -32,8 +32,9 @@ String userFacingError(
   if (message.contains('UNIQUE constraint failed: users.username')) {
     return 'This username is already in use.';
   }
-  if (message.contains('no column named is_active')) {
-    return 'The student database needs an update. Fully close and reopen the app, then try again.';
+  if (message.contains('no column named is_active') ||
+      message.contains('no such column: is_active')) {
+    return 'The database needs an update. Fully close and reopen the app, then try again.';
   }
   if (message.contains('FOREIGN KEY constraint failed')) {
     return 'This record is linked to missing data. Refresh the page and try again.';
@@ -61,7 +62,7 @@ bool _isDatabaseError(Object error, String message) =>
 
 String? _sqliteDetail(String message) {
   final match = RegExp(
-    r'SqliteException\(\d+\): (?:while (?:preparing|executing) statement, )?(.+?)(?:, SQL logic error \(code \d+\))?(?:, constraint failed \(code \d+\))?',
+    r'SqliteException\(\d+\): (?:while (?:preparing|executing) statement, )?(.+?)(?:, SQL logic error \(code \d+\)|, constraint failed \(code \d+\))',
   ).firstMatch(message);
   if (match == null) return null;
 
@@ -69,8 +70,12 @@ String? _sqliteDetail(String message) {
   if (detail.startsWith('UNIQUE constraint failed:')) {
     return 'This value already exists in the system. Check for duplicates and try again.';
   }
-  if (detail.startsWith('no column named ')) {
-    final column = detail.replaceFirst('no column named ', '').trim();
+  if (detail.startsWith('no column named ') ||
+      detail.startsWith('no such column:')) {
+    final column = detail
+        .replaceFirst('no column named ', '')
+        .replaceFirst('no such column:', '')
+        .trim();
     return 'The database is missing "$column". Fully close and reopen the app, then try again.';
   }
   if (detail == 'database is locked') {

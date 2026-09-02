@@ -11,6 +11,7 @@ import '../../features/admin/batch_management_page.dart';
 import '../../features/admin/student_management_page.dart';
 import '../../features/admin/historical_past_pupil_page.dart';
 import '../../features/admin/examination_management_page.dart';
+import '../../features/admin/competition_management_page.dart';
 import '../../features/admin/backup_management_page.dart';
 import '../../features/admin/audit_logs_page.dart';
 
@@ -26,6 +27,7 @@ class AppRoutes {
   static const studentManagement = '/admin/students';
   static const historicalPastPupils = '/admin/past-pupils';
   static const examinationManagement = '/admin/examinations';
+  static const competitionManagement = '/admin/competitions';
   static const backupManagement = '/backup';
   static const auditLogs = '/admin/audit-logs';
 
@@ -103,6 +105,14 @@ class AppRoutes {
         return MaterialPageRoute(
           builder: (_) =>
               ExaminationManagementPage(database: database, auth: auth),
+        );
+      case competitionManagement:
+        if (!auth.canAccess(role: 'staff')) {
+          return _redirect(settings, database, auth);
+        }
+        return MaterialPageRoute(
+          builder: (_) =>
+              CompetitionManagementPage(database: database, auth: auth),
         );
       case backupManagement:
         if (!auth.isAuthenticated) return _redirect(settings, database, auth);

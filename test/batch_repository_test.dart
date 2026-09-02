@@ -281,4 +281,41 @@ void main() {
 
     await database.close();
   });
+
+  test('toggles batch active status', () async {
+    sqfliteFfiInit();
+    final database = AppDatabase(factory: databaseFactoryFfi);
+    final connection = await database.openAt(inMemoryDatabasePath);
+    final adminId = (await connection.query('users')).single['id']! as int;
+    final staffId = await _createStaff(connection, adminId);
+    final repository = BatchRepository();
+
+    await repository.createBatch(
+      database: connection,
+      adminId: staffId,
+      name: 'Toggle Batch',
+      startingYear: 2026,
+      startingGrade: 'Grade 1',
+    );
+    final batchId = (await connection.query('batches')).single['id']! as int;
+    expect((await connection.query('batches')).single['is_active'], 1);
+
+    await repository.setBatchActive(
+      database: connection,
+      adminId: adminId,
+      batchId: batchId,
+      active: false,
+    );
+    expect((await connection.query('batches')).single['is_active'], 0);
+
+    await repository.setBatchActive(
+      database: connection,
+      adminId: adminId,
+      batchId: batchId,
+      active: true,
+    );
+    expect((await connection.query('batches')).single['is_active'], 1);
+
+    await database.close();
+  });
 }

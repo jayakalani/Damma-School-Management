@@ -1,3 +1,4 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/widgets/date_picker_field.dart';
@@ -5,6 +6,7 @@ import '../../app/widgets/glass_admin_ui.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../core/batches/batch_repository.dart';
+import '../../core/export/student_export_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/students/student_repository.dart';
 import '../../core/utils/app_validators.dart';
@@ -25,14 +27,22 @@ class StudentManagementPage extends StatefulWidget {
 class _StudentManagementPageState extends State<StudentManagementPage> {
   final search = TextEditingController();
   final repository = StudentRepository();
+  final batchRepository = BatchRepository();
+  final exportService = const StudentExportService();
   String? status;
+  int? batchId;
   DateTime? startDate;
   DateTime? endDate;
   late Future<List<Map<String, Object?>>> students;
+  late Future<List<Map<String, Object?>>> batches;
   int get adminId => widget.auth.currentSession!.userId;
   @override
   void initState() {
     super.initState();
+    batches = batchRepository.listBatches(
+      database: widget.database,
+      adminId: adminId,
+    );
     reload();
   }
 
@@ -48,6 +58,7 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
       adminId: adminId,
       query: search.text,
       status: status,
+      batchId: batchId,
       startDate: startDate,
       endDate: endDate,
     );
@@ -59,10 +70,86 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
     setState(() {
       search.clear();
       status = null;
+      batchId = null;
       startDate = null;
       endDate = null;
       reload();
     });
+  }
+
+  StudentExportFilters _exportFilters(List<Map<String, Object?>> batchRows) {
+    String? batchName;
+    if (batchId != null) {
+      for (final batch in batchRows) {
+        if (batch['id'] == batchId) {
+          batchName = batch['batch_name'] as String?;
+          break;
+        }
+      }
+    }
+    return StudentExportFilters(
+      searchQuery: search.text,
+      statusFilter: status,
+      batchName: batchName,
+      startDate: startDate,
+      endDate: endDate,
+    );
+  }
+
+  String _exportTimestamp() {
+    final now = DateTime.now();
+    return '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_'
+        '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _exportCsv() async {
+    try {
+      final exportedStudents = await students;
+      final batchRows = await batches;
+      final location = await getSaveLocation(
+        suggestedName: 'students_${_exportTimestamp()}.csv',
+        acceptedTypeGroups: [
+          const XTypeGroup(label: 'CSV', extensions: ['csv']),
+        ],
+      );
+      if (location == null) return;
+      await exportService.writeTextFile(
+        path: location.path,
+        contents: exportService.buildCsv(
+          exportedStudents,
+          filters: _exportFilters(batchRows),
+        ),
+      );
+      _message(
+        'Student CSV exported (${exportedStudents.length} record(s)).',
+      );
+    } catch (_) {
+      _message('Unable to export student CSV.', error: true);
+    }
+  }
+
+  Future<void> _exportPdf() async {
+    try {
+      final exportedStudents = await students;
+      final batchRows = await batches;
+      final location = await getSaveLocation(
+        suggestedName: 'students_${_exportTimestamp()}.pdf',
+        acceptedTypeGroups: [
+          const XTypeGroup(label: 'PDF', extensions: ['pdf']),
+        ],
+      );
+      if (location == null) return;
+      final bytes = await exportService.buildPdf(
+        exportedStudents,
+        filters: _exportFilters(batchRows),
+      );
+      await exportService.writeBytesFile(path: location.path, bytes: bytes);
+      _message(
+        'Student PDF exported (${exportedStudents.length} record(s)).',
+      );
+    } catch (_) {
+      _message('Unable to export student PDF.', error: true);
+    }
   }
 
   Future<void> chooseStart() async {
@@ -130,6 +217,10 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
       },
       failureMessage: 'Unable to register student.',
     );
+  }
+
+  Future<void> viewStudent(Map<String, Object?> student) async {
+    await showStudentDetails(context, student: student);
   }
 
   Future<void> editStudent(Map<String, Object?> student) async {
@@ -239,6 +330,18 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
         runSpacing: 10,
         children: [
           GlassToolbarButton(
+            label: 'Export CSV',
+            icon: Icons.table_chart_outlined,
+            accent: const Color(0xFF16A34A),
+            onPressed: _exportCsv,
+          ),
+          GlassToolbarButton(
+            label: 'Export PDF',
+            icon: Icons.picture_as_pdf_outlined,
+            accent: const Color(0xFFE11D48),
+            onPressed: _exportPdf,
+          ),
+          GlassToolbarButton(
             label: 'Convert Batch',
             icon: Icons.groups_outlined,
             accent: const Color(0xFF2563EB),
@@ -253,8 +356,8 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
             ),
         ],
       ),
-      body: FutureBuilder<List<Map<String, Object?>>>(
-        future: students,
+      body: FutureBuilder<List<Object?>>(
+        future: Future.wait<Object?>([students, batches]),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
@@ -274,7 +377,10 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final allStudents = snapshot.data!;
+          final allStudents =
+              (snapshot.data![0] as List).cast<Map<String, Object?>>();
+          final allBatches =
+              (snapshot.data![1] as List).cast<Map<String, Object?>>();
           final enrolled = allStudents.where((s) => s['status'] == 'student');
           final activeCount =
               enrolled.where((s) => _isStudentActive(s)).length;
@@ -315,7 +421,7 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
                     builder: (context, constraints) {
                       final maxWidth = constraints.maxWidth;
                       final compact = maxWidth < 720;
-                      final searchWidth = compact ? maxWidth : 280.0;
+                      final searchWidth = compact ? maxWidth : 240.0;
                       final statusWidth = compact ? maxWidth : 180.0;
 
                       return Wrap(
@@ -338,7 +444,7 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
                           SizedBox(
                             width: statusWidth,
                             child: DropdownButtonFormField<String?>(
-                              key: ValueKey(status),
+                              key: ValueKey('status-$status'),
                               initialValue: status,
                               isExpanded: true,
                               decoration: glassInputDecoration(
@@ -362,6 +468,20 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
                                   ),
                                 ),
                                 DropdownMenuItem(
+                                  value: 'active',
+                                  child: Text(
+                                    'Active',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'inactive',
+                                  child: Text(
+                                    'Inactive',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                DropdownMenuItem(
                                   value: 'past_pupil',
                                   child: Text(
                                     'Past Pupils',
@@ -371,6 +491,40 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
                               ],
                               onChanged: (value) {
                                 status = value;
+                                refreshList();
+                              },
+                            ),
+                          ),
+                          SizedBox(
+                            width: statusWidth,
+                            child: DropdownButtonFormField<int?>(
+                              key: ValueKey('batch-$batchId'),
+                              initialValue: batchId,
+                              isExpanded: true,
+                              decoration: glassInputDecoration(
+                                context,
+                                hint: 'All Batches',
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              items: [
+                                const DropdownMenuItem<int?>(
+                                  value: null,
+                                  child: Text(
+                                    'All Batches',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                for (final batch in allBatches)
+                                  DropdownMenuItem<int?>(
+                                    value: batch['id']! as int,
+                                    child: Text(
+                                      batch['batch_name']! as String,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                              onChanged: (value) {
+                                batchId = value;
                                 refreshList();
                               },
                             ),
@@ -494,6 +648,12 @@ class _StudentManagementPageState extends State<StudentManagementPage> {
                                       spacing: 8,
                                       runSpacing: 8,
                                       children: [
+                                        GlassActionChipButton(
+                                          label: 'View',
+                                          color: const Color(0xFF0891B2),
+                                          onPressed: () =>
+                                              viewStudent(student),
+                                        ),
                                         GlassActionChipButton(
                                           label: 'Edit',
                                           color: const Color(0xFF2563EB),
@@ -757,3 +917,216 @@ String _studentLabel(String key) => key
     .split('_')
     .map((part) => part[0].toUpperCase() + part.substring(1))
     .join(' ');
+
+String _studentDisplayValue(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? '—' : text;
+}
+
+String _studentStatusLabel(Map<String, Object?> student) {
+  if (student['status'] == 'past_pupil') return 'Past Pupil';
+  return _isStudentActive(student) ? 'Active' : 'Inactive';
+}
+
+Color _studentStatusColor(Map<String, Object?> student) {
+  if (student['status'] == 'past_pupil') return const Color(0xFF7C3AED);
+  return _isStudentActive(student)
+      ? const Color(0xFF16A34A)
+      : Colors.grey.shade600;
+}
+
+Future<void> showStudentDetails(
+  BuildContext context, {
+  required Map<String, Object?> student,
+}) {
+  final statusLabel = _studentStatusLabel(student);
+  final statusColor = _studentStatusColor(student);
+  const detailKeys = [
+    'full_name',
+    'name_with_initials',
+    'date_of_birth',
+    'nic',
+    'phone_number',
+    'address',
+    'joined_date',
+  ];
+
+  return showDialog<void>(
+    context: context,
+    builder: (context) {
+      final theme = Theme.of(context);
+      return AlertDialog(
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                student['full_name']! as String,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: statusColor),
+              ),
+              child: Text(
+                statusLabel,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: statusColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 620,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _StudentDetailSection(
+                  title: 'Personal Information',
+                  icon: Icons.person_outline,
+                  children: [
+                    _StudentDetailRow(
+                      label: 'Student ID',
+                      value: '#${student['id']}',
+                    ),
+                    for (final key in detailKeys)
+                      _StudentDetailRow(
+                        label: _studentLabel(key),
+                        value: _studentDisplayValue(student[key]),
+                      ),
+                    _StudentDetailRow(
+                      label: 'Enrollment Status',
+                      value: student['status'] == 'past_pupil'
+                          ? 'Past Pupil'
+                          : 'Student',
+                    ),
+                    if (student['status'] == 'student')
+                      _StudentDetailRow(
+                        label: 'Active Status',
+                        value: _isStudentActive(student)
+                            ? 'Active'
+                            : 'Inactive',
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _StudentDetailSection(
+                  title: 'Record Info',
+                  icon: Icons.info_outline,
+                  children: [
+                    _StudentDetailRow(
+                      label: 'Created At',
+                      value: _studentDisplayValue(student['created_at']),
+                    ),
+                    _StudentDetailRow(
+                      label: 'Updated At',
+                      value: _studentDisplayValue(student['updated_at']),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+class _StudentDetailSection extends StatelessWidget {
+  const _StudentDetailSection({
+    required this.title,
+    required this.icon,
+    required this.children,
+  });
+
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 20, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StudentDetailRow extends StatelessWidget {
+  const _StudentDetailRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 150,
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

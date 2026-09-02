@@ -71,13 +71,10 @@ class BatchRepository {
     );
     final examinations = await database.rawQuery(
       '''
-      SELECT examinations.*, history.academic_year, history.grade
+      SELECT examinations.*
       FROM examinations
-      INNER JOIN batch_history history ON history.id = examinations.batch_history_id
-      WHERE history.batch_id = ?
       ORDER BY examinations.examination_date DESC, examinations.id DESC
     ''',
-      [batchId],
     );
     return BatchDetails(
       batch: batches.single,
@@ -238,6 +235,7 @@ class BatchRepository {
       final batchId = await transaction.insert('batches', {
         'batch_name': name.trim(),
         'starting_year': startingYear,
+        'is_active': 1,
         'created_at': now,
         'updated_at': now,
       });
@@ -260,6 +258,42 @@ class BatchRepository {
         description: 'Admin created batch ${name.trim()}.',
       );
       return historyId;
+    });
+  }
+
+  Future<void> setBatchActive({
+    required Database database,
+    required int adminId,
+    required int batchId,
+    required bool active,
+  }) async {
+    await database.transaction((transaction) async {
+      await _requireAdmin(transaction, adminId);
+      final rows = await transaction.query(
+        'batches',
+        columns: ['id', 'batch_name'],
+        where: 'id = ?',
+        whereArgs: [batchId],
+        limit: 1,
+      );
+      if (rows.isEmpty) throw StateError('Batch not found.');
+      final now = DateTime.now().toUtc().toIso8601String();
+      await transaction.update(
+        'batches',
+        {'is_active': active ? 1 : 0, 'updated_at': now},
+        where: 'id = ?',
+        whereArgs: [batchId],
+      );
+      await _auditLogs.record(
+        database: transaction,
+        userId: adminId,
+        action: AuditActions.batchStatusChanged,
+        module: 'batch_management',
+        entityType: 'batch',
+        entityId: batchId,
+        description:
+            'Staff ${active ? 'activated' : 'deactivated'} batch ${rows.single['batch_name']}.',
+      );
     });
   }
 
