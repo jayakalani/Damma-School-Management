@@ -295,7 +295,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
       (
         'Reports',
         Icons.insights_rounded,
-        'View school reports and summaries',
+        'Export school reports as CSV or PDF',
         AppRoutes.reports,
       ),
       (
