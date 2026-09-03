@@ -3,7 +3,9 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../app/routes/app_routes.dart';
 import '../../app/widgets/glass_ui.dart';
+import '../../core/dashboard/dashboard_stats_repository.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/utils/error_messages.dart';
 import '../profile/user_profile_menu.dart';
 
 class StaffDashboard extends StatefulWidget {
@@ -19,6 +21,8 @@ class StaffDashboard extends StatefulWidget {
 class _StaffDashboardState extends State<StaffDashboard> {
   int _selectedIndex = 0;
   bool _isSidebarVisible = true;
+  final _statsRepository = const DashboardStatsRepository();
+  late Future<StaffDashboardStats> _stats;
 
   static const _navItems = [
     ('Dashboard', Icons.dashboard_rounded, AppRoutes.staff),
@@ -28,6 +32,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
     ('Past Pupils', Icons.history_edu_rounded, AppRoutes.historicalPastPupils),
     ('Exams', Icons.assignment_rounded, AppRoutes.examinationManagement),
     ('Competitions', Icons.emoji_events_rounded, AppRoutes.competitionManagement),
+    ('Reports', Icons.insights_rounded, AppRoutes.reports),
     ('Backup', Icons.backup_rounded, AppRoutes.backupManagement),
   ];
 
@@ -35,12 +40,26 @@ class _StaffDashboardState extends State<StaffDashboard> {
   void initState() {
     super.initState();
     widget.auth.requireRole('staff');
+    _loadStats();
   }
 
-  void _navigate(int index, String route) {
+  void _loadStats() {
+    _stats = _statsRepository.loadStaffStats(widget.database);
+  }
+
+  Future<void> _navigate(int index, String route) async {
     setState(() => _selectedIndex = index);
-    if (route == AppRoutes.staff) return;
-    Navigator.of(context).pushNamed(route);
+    if (route == AppRoutes.staff) {
+      setState(_loadStats);
+      return;
+    }
+    await Navigator.of(context).pushNamed(route);
+    if (mounted) setState(_loadStats);
+  }
+
+  Future<void> _openRoute(String route) async {
+    await Navigator.of(context).pushNamed(route);
+    if (mounted) setState(_loadStats);
   }
 
   void _logout() {
@@ -68,12 +87,22 @@ class _StaffDashboardState extends State<StaffDashboard> {
               child: Column(
                 children: [
                   Padding(
-                    padding: EdgeInsets.fromLTRB(isMobile ? 12 : 16, 16, isMobile ? 12 : 24, 8),
+                    padding: EdgeInsets.fromLTRB(
+                      isMobile ? 12 : 16,
+                      16,
+                      isMobile ? 12 : 24,
+                      8,
+                    ),
                     child: _buildHeaderBar(context, session),
                   ),
                   Expanded(
                     child: SingleChildScrollView(
-                      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 24, 0, isMobile ? 16 : 24, 24),
+                      padding: EdgeInsets.fromLTRB(
+                        isMobile ? 16 : 24,
+                        0,
+                        isMobile ? 16 : 24,
+                        24,
+                      ),
                       child: _buildDashboardContent(context),
                     ),
                   ),
@@ -107,18 +136,35 @@ class _StaffDashboardState extends State<StaffDashboard> {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(14),
                       gradient: LinearGradient(
-                        colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.75)],
+                        colors: [
+                          colorScheme.primary,
+                          colorScheme.primary.withValues(alpha: 0.75),
+                        ],
                       ),
-                      boxShadow: floatingShadow(color: colorScheme.primary, blur: 14, y: 6, opacity: 0.16),
+                      boxShadow: floatingShadow(
+                        color: colorScheme.primary,
+                        blur: 14,
+                        y: 6,
+                        opacity: 0.16,
+                      ),
                     ),
-                    child: Icon(Icons.school_rounded, color: colorScheme.onPrimary),
+                    child: Icon(
+                      Icons.school_rounded,
+                      color: colorScheme.onPrimary,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Damma School', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                        Text(
+                          'Damma School',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
                         Text(
                           'Staff Portal',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -168,7 +214,8 @@ class _StaffDashboardState extends State<StaffDashboard> {
       child: Row(
         children: [
           IconButton(
-            onPressed: () => setState(() => _isSidebarVisible = !_isSidebarVisible),
+            onPressed: () =>
+                setState(() => _isSidebarVisible = !_isSidebarVisible),
             tooltip: _isSidebarVisible ? 'Hide sidebar' : 'Show sidebar',
             icon: const Icon(Icons.menu_rounded),
           ),
@@ -178,7 +225,10 @@ class _StaffDashboardState extends State<StaffDashboard> {
               children: [
                 Text(
                   'Staff Dashboard',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 Text(
                   'Manage school records in your offline workspace.',
@@ -205,52 +255,143 @@ class _StaffDashboardState extends State<StaffDashboard> {
   }
 
   Widget _buildDashboardContent(BuildContext context) {
-    final metrics = [
-      ('Active Teachers', '12', Icons.person_rounded, const Color(0xFF3B82F6)),
-      ('Active Batches', '8', Icons.groups_rounded, const Color(0xFF22C55E)),
-      ('Enrolled Students', '245', Icons.school_rounded, const Color(0xFFF97316)),
-      ('Past Pupils', '1,842', Icons.history_edu_rounded, const Color(0xFF8B5CF6)),
-    ];
-
     final actions = [
-      ('Teachers', Icons.person_rounded, 'Manage teacher records', AppRoutes.teacherManagement),
-      ('Batch Management', Icons.groups_rounded, 'Create and manage batches', AppRoutes.batchManagement),
-      ('Students', Icons.school_rounded, 'Manage student records', AppRoutes.studentManagement),
-      ('Examinations', Icons.assignment_rounded, 'Manage exams and marks', AppRoutes.examinationManagement),
-      ('Past Pupils', Icons.history_edu_rounded, 'Review alumni records', AppRoutes.historicalPastPupils),
-      ('Competitions', Icons.emoji_events_rounded, 'Manage and view school competitions.', AppRoutes.competitionManagement),
-      ('Database Backup', Icons.backup_rounded, 'Backup application data', AppRoutes.backupManagement),
+      (
+        'Teachers',
+        Icons.person_rounded,
+        'Manage teacher records',
+        AppRoutes.teacherManagement,
+      ),
+      (
+        'Batch Management',
+        Icons.groups_rounded,
+        'Create and manage batches',
+        AppRoutes.batchManagement,
+      ),
+      (
+        'Students',
+        Icons.school_rounded,
+        'Manage student records',
+        AppRoutes.studentManagement,
+      ),
+      (
+        'Examinations',
+        Icons.assignment_rounded,
+        'Manage exams and marks',
+        AppRoutes.examinationManagement,
+      ),
+      (
+        'Past Pupils',
+        Icons.history_edu_rounded,
+        'Review alumni records',
+        AppRoutes.historicalPastPupils,
+      ),
+      (
+        'Competitions',
+        Icons.emoji_events_rounded,
+        'Manage and view school competitions.',
+        AppRoutes.competitionManagement,
+      ),
+      (
+        'Reports',
+        Icons.insights_rounded,
+        'View school reports and summaries',
+        AppRoutes.reports,
+      ),
+      (
+        'Database Backup',
+        Icons.backup_rounded,
+        'Backup application data',
+        AppRoutes.backupManagement,
+      ),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final width = MediaQuery.sizeOf(context).width;
-            final columns = width >= 900 ? 4 : width >= 600 ? 2 : 1;
-            return GridView.count(
-              crossAxisCount: columns,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: columns == 1 ? 3.6 : 2.8,
-              children: metrics
-                  .map(
-                    (m) => GlassMetricCard(
-                      label: m.$1,
-                      value: m.$2,
-                      icon: m.$3,
-                      color: m.$4,
-                    ),
-                  )
-                  .toList(),
+        FutureBuilder<StaffDashboardStats>(
+          future: _stats,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  userFacingError(
+                    snapshot.error!,
+                    fallback: 'Unable to load dashboard metrics.',
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              );
+            }
+
+            final data = snapshot.data ?? StaffDashboardStats.empty;
+            final loading = !snapshot.hasData;
+            final metrics = [
+              (
+                'Active Teachers',
+                loading ? '—' : formatCount(data.activeTeachers),
+                Icons.person_rounded,
+                const Color(0xFF3B82F6),
+              ),
+              (
+                'Active Batches',
+                loading ? '—' : formatCount(data.activeBatches),
+                Icons.groups_rounded,
+                const Color(0xFF22C55E),
+              ),
+              (
+                'Enrolled Students',
+                loading ? '—' : formatCount(data.enrolledStudents),
+                Icons.school_rounded,
+                const Color(0xFFF97316),
+              ),
+              (
+                'Past Pupils',
+                loading ? '—' : formatCount(data.pastPupils),
+                Icons.history_edu_rounded,
+                const Color(0xFF8B5CF6),
+              ),
+            ];
+
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final width = MediaQuery.sizeOf(context).width;
+                final columns = width >= 900
+                    ? 4
+                    : width >= 600
+                        ? 2
+                        : 1;
+                return GridView.count(
+                  crossAxisCount: columns,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: columns == 1 ? 3.6 : 2.8,
+                  children: metrics
+                      .map(
+                        (m) => GlassMetricCard(
+                          label: m.$1,
+                          value: m.$2,
+                          icon: m.$3,
+                          color: m.$4,
+                        ),
+                      )
+                      .toList(),
+                );
+              },
             );
           },
         ),
         const SizedBox(height: 20),
-        Text('Quick Actions', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+        Text(
+          'Quick Actions',
+          style: Theme.of(context)
+              .textTheme
+              .titleLarge
+              ?.copyWith(fontWeight: FontWeight.w700),
+        ),
         const SizedBox(height: 6),
         Text(
           'Jump directly into the modules you use most.',
@@ -262,7 +403,11 @@ class _StaffDashboardState extends State<StaffDashboard> {
         LayoutBuilder(
           builder: (context, constraints) {
             final width = MediaQuery.sizeOf(context).width;
-            final columns = width >= 900 ? 3 : width >= 600 ? 2 : 1;
+            final columns = width >= 900
+                ? 3
+                : width >= 600
+                    ? 2
+                    : 1;
             return GridView.count(
               crossAxisCount: columns,
               shrinkWrap: true,
@@ -276,7 +421,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
                       title: a.$1,
                       subtitle: a.$3,
                       icon: a.$2,
-                      onTap: () => Navigator.of(context).pushNamed(a.$4),
+                      onTap: () => _openRoute(a.$4),
                     ),
                   )
                   .toList(),

@@ -1,5 +1,6 @@
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../competitions/competition_repository.dart';
 import '../students/student_repository.dart';
 import '../teachers/teacher_repository.dart';
 import '../users/user_repository.dart';
@@ -13,6 +14,9 @@ String userFacingError(
     return error.message;
   }
   if (error is InvalidProfileDataException) {
+    return error.message;
+  }
+  if (error is InvalidCompetitionException) {
     return error.message;
   }
   if (error is InvalidStudentException) {

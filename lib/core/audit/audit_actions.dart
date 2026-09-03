@@ -21,6 +21,8 @@ class AuditActions {
   static const examinationCreated = 'examination_created';
   static const examinationResultsUpdated = 'examination_results_updated';
   static const competitionCreated = 'competition_created';
+  static const competitionBatchesAdded = 'competition_batches_added';
+  static const competitionSectionCreated = 'competition_section_created';
   static const pastPupilBatchCreated = 'past_pupil_batch_created';
   static const backupCreated = 'backup_created';
   static const profileUpdated = 'profile_updated';

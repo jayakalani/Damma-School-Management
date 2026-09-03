@@ -10,6 +10,7 @@ class DatabaseVerifier {
     'batch_history', 'students', 'student_batch_history',
     'batch_teacher_history', 'examinations', 'exam_results',
     'past_pupil_batches', 'historical_past_pupils', 'competitions',
+    'competition_batches', 'competition_sections',
   ];
 
   static Future<void> verify(Database database) async {

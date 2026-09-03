@@ -79,6 +79,8 @@ class BackupService {
         'examinations',
         'exam_results',
         'competitions',
+        'competition_batches',
+        'competition_sections',
       ];
       if (!required.every(names.contains)) {
         throw const InvalidBackupException(

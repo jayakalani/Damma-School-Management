@@ -3,7 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 class DatabaseSchema {
   const DatabaseSchema._();
 
-  static const version = 6;
+  static const version = 8;
 
   static Future<void> onConfigure(Database database) async {
     await database.execute('PRAGMA foreign_keys = ON');
@@ -24,6 +24,8 @@ class DatabaseSchema {
     if (oldVersion < 4) await _migrateToV4(database);
     if (oldVersion < 5) await _migrateToV5(database);
     if (oldVersion < 6) await _migrateToV6(database);
+    if (oldVersion < 7) await _migrateToV7(database);
+    if (oldVersion < 8) await _migrateToV8(database);
   }
 
   static Future<void> _migrateToV3(Database database) async {
@@ -40,6 +42,14 @@ class DatabaseSchema {
 
   static Future<void> _migrateToV6(Database database) async {
     await _ensureCompetitionsTable(database);
+  }
+
+  static Future<void> _migrateToV7(Database database) async {
+    await _ensureCompetitionBatchesTable(database);
+  }
+
+  static Future<void> _migrateToV8(Database database) async {
+    await _ensureCompetitionSectionsTable(database);
   }
 
   static Future<void> _ensureStudentColumns(Database database) async {
@@ -199,6 +209,51 @@ class DatabaseSchema {
     );
   }
 
+  static Future<void> _ensureCompetitionBatchesTable(Database database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS competition_batches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        competition_id INTEGER NOT NULL,
+        batch_id INTEGER NOT NULL,
+        added_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (competition_id, batch_id),
+        FOREIGN KEY (competition_id) REFERENCES competitions(id)
+          ON DELETE RESTRICT ON UPDATE CASCADE,
+        FOREIGN KEY (batch_id) REFERENCES batches(id)
+          ON DELETE RESTRICT ON UPDATE CASCADE
+      )
+    ''');
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_competition_batches_competition '
+      'ON competition_batches(competition_id)',
+    );
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_competition_batches_batch '
+      'ON competition_batches(batch_id)',
+    );
+  }
+
+  static Future<void> _ensureCompetitionSectionsTable(Database database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS competition_sections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        competition_id INTEGER NOT NULL,
+        section_name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (competition_id, section_name COLLATE NOCASE),
+        FOREIGN KEY (competition_id) REFERENCES competitions(id)
+          ON DELETE RESTRICT ON UPDATE CASCADE
+      )
+    ''');
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_competition_sections_competition '
+      'ON competition_sections(competition_id)',
+    );
+  }
+
   static Future<void> ensureComplete(Database database) async {
     final tableRows = await database.rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'");
     final existingTables = tableRows.map((row) => row['name'] as String).toSet();
@@ -214,6 +269,8 @@ class DatabaseSchema {
     await _ensureBatchColumns(database);
     await _ensureSchoolWideExaminations(database);
     await _ensureCompetitionsTable(database);
+    await _ensureCompetitionBatchesTable(database);
+    await _ensureCompetitionSectionsTable(database);
 
     final indexRows = await database.rawQuery("SELECT name FROM sqlite_master WHERE type = 'index'");
     final existingIndexes = indexRows.map((row) => row['name'] as String).toSet();
@@ -247,6 +304,8 @@ class DatabaseSchema {
     '''CREATE TABLE past_pupil_batches (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_name TEXT NOT NULL, year_completed INTEGER NOT NULL, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)''',
     '''CREATE TABLE historical_past_pupils (id INTEGER PRIMARY KEY AUTOINCREMENT, past_pupil_batch_id INTEGER NOT NULL, full_name TEXT NOT NULL, name_with_initials TEXT, date_of_birth TEXT, nic TEXT, phone_number TEXT, address TEXT, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY (past_pupil_batch_id) REFERENCES past_pupil_batches(id) ON DELETE RESTRICT ON UPDATE CASCADE)''',
     '''CREATE TABLE competitions (id INTEGER PRIMARY KEY AUTOINCREMENT, competition_name TEXT NOT NULL, competition_date TEXT NOT NULL, venue TEXT, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)''',
+    '''CREATE TABLE competition_batches (id INTEGER PRIMARY KEY AUTOINCREMENT, competition_id INTEGER NOT NULL, batch_id INTEGER NOT NULL, added_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (competition_id, batch_id), FOREIGN KEY (competition_id) REFERENCES competitions(id) ON DELETE RESTRICT ON UPDATE CASCADE, FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE RESTRICT ON UPDATE CASCADE)''',
+    '''CREATE TABLE competition_sections (id INTEGER PRIMARY KEY AUTOINCREMENT, competition_id INTEGER NOT NULL, section_name TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (competition_id, section_name COLLATE NOCASE), FOREIGN KEY (competition_id) REFERENCES competitions(id) ON DELETE RESTRICT ON UPDATE CASCADE)''',
     'CREATE UNIQUE INDEX uq_batch_history_current ON batch_history(batch_id) WHERE is_current = 1',
     'CREATE UNIQUE INDEX uq_student_current_batch ON student_batch_history(student_id) WHERE is_current = 1',
     'CREATE UNIQUE INDEX uq_teacher_current_batch ON batch_teacher_history(batch_history_id) WHERE is_current = 1',
@@ -263,6 +322,9 @@ class DatabaseSchema {
     'CREATE INDEX idx_exam_results_exam ON exam_results(examination_id)',
     'CREATE INDEX idx_exam_results_student ON exam_results(student_id)',
     'CREATE INDEX idx_competitions_date ON competitions(competition_date)',
+    'CREATE INDEX idx_competition_batches_competition ON competition_batches(competition_id)',
+    'CREATE INDEX idx_competition_batches_batch ON competition_batches(batch_id)',
+    'CREATE INDEX idx_competition_sections_competition ON competition_sections(competition_id)',
     'CREATE INDEX idx_audit_logs_user ON audit_logs(user_id)',
     'CREATE INDEX idx_audit_logs_created ON audit_logs(created_at)',
   ];
